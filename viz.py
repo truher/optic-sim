@@ -1,20 +1,28 @@
 # pylint: disable=too-many-statements, too-many-arguments, too-many-locals, consider-using-from-import, protected-access
 """ Plotting functions"""
+# black formatted
 
 from __future__ import annotations
 from typing import List
-import matplotlib.pyplot as plt # type: ignore
-import mpl_toolkits.mplot3d.art3d as art3d # type: ignore
+import matplotlib.pyplot as plt  # type: ignore
+import mpl_toolkits.mplot3d.art3d as art3d  # type: ignore
 import numpy as np
-from matplotlib.patches import Rectangle # type: ignore
-from mpl_toolkits.mplot3d import Axes3D # pylint: disable=unused-import
+from matplotlib.patches import Rectangle  # type: ignore
+from mpl_toolkits.mplot3d import Axes3D  # pylint: disable=unused-import
 from numpy.typing import NDArray
 import optics
 
-warnings.filterwarnings("ignore",category=matplotlib.cbook.mplDeprecation)
+warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
 
-def plot_rays(batches: List[List[optics.Photon]], elev: float, azim: float,
-              size: float, arrow_length: float, rectangles: List[List[float]]) -> None:
+
+def plot_rays(
+    batches: List[List[optics.Photon]],
+    elev: float,
+    azim: float,
+    size: float,
+    arrow_length: float,
+    rectangles: List[List[float]],
+) -> None:
     """3d plot a set of photon batches, each batch a different color.
 
     Also render interesting rectangles.  [xmin,xmax,ymin,ymax,z]
@@ -61,19 +69,34 @@ def plot_rays(batches: List[List[optics.Photon]], elev: float, azim: float,
         ymin = rectangle[2]
         ymax = rectangle[3]
         location_z = rectangle[4]
-        patch = Rectangle((xmin, ymin), xmax-xmin, ymax-ymin, fill=False, linewidth=5,
-                      color=f'C{ridx%10}')
+        patch = Rectangle(
+            (xmin, ymin),
+            xmax - xmin,
+            ymax - ymin,
+            fill=False,
+            linewidth=5,
+            color=f"C{ridx%10}",
+        )
         axes.add_patch(patch)
         art3d.pathpatch_2d_to_3d(patch, z=location_z, zdir="z")
     plt.show()
 
 
-def plot_histogram_slices(photon_batch: List[optics.Photon], suptitle: str,
-                          x_min: float, x_max: float, y_min: float, y_max: float,
-                          z_min: float, z_max: float,
-                          theta_min: float = 0, theta_max: float = np.pi,
-                          phi_min: float = -np.pi, phi_max: float = np.pi,
-                          bins: int = 100) -> None:
+def plot_histogram_slices(
+    photon_batch: List[optics.Photon],
+    suptitle: str,
+    x_min: float,
+    x_max: float,
+    y_min: float,
+    y_max: float,
+    z_min: float,
+    z_max: float,
+    theta_min: float = 0,
+    theta_max: float = np.pi,
+    phi_min: float = -np.pi,
+    phi_max: float = np.pi,
+    bins: int = 100,
+) -> None:
     """Slice counts by x, y, phi, and theta, also show intensity per steradian."""
     # radiance is *projected* area, so compute that too?
     # radiosity (W/m^2): all directions, per area (slice in x, total in y)
@@ -91,15 +114,17 @@ def plot_histogram_slices(photon_batch: List[optics.Photon], suptitle: str,
     # radiant intensity (W/sr): whole area, per angle (slice in phi, total in theta)
     phi_freq: NDArray[np.int32] = np.zeros(bins, dtype=np.int32)
 
-    photons_per_steridian_by_theta: NDArray[np.float64] = np.zeros(bins, dtype=np.float64)
+    photons_per_steridian_by_theta: NDArray[np.float64] = np.zeros(
+        bins, dtype=np.float64
+    )
 
     x_range = x_max - x_min
     x_bin_width = x_range / bins
-    x_bins = x_range * np.arange(bins) / bins + x_min # units?
+    x_bins = x_range * np.arange(bins) / bins + x_min  # units?
 
     y_range = y_max - y_min
     y_bin_width = y_range / bins
-    y_bins = y_range * np.arange(bins) / bins + y_min # units?
+    y_bins = y_range * np.arange(bins) / bins + y_min  # units?
 
     z_range = z_max - z_min
     z_bin_width = z_range / bins
@@ -109,7 +134,7 @@ def plot_histogram_slices(photon_batch: List[optics.Photon], suptitle: str,
     theta_bin_width_rad = theta_range / bins
     theta_bin_width_deg = theta_bin_width_rad * 180 / np.pi
 
-    theta_bins_rad = (theta_range * np.arange(bins) / bins + theta_min)
+    theta_bins_rad = theta_range * np.arange(bins) / bins + theta_min
     theta_bins_deg = theta_bins_rad * 180 / np.pi
 
     phi_range = phi_max - phi_min
@@ -161,8 +186,10 @@ def plot_histogram_slices(photon_batch: List[optics.Photon], suptitle: str,
     theta_bucket_angle_steradians: NDArray[np.float64] = np.array(
         list(
             map(
-                lambda x: (np.cos((theta_range * x + theta_min) / bins)
-                - np.cos((theta_range * (x + 1) + theta_min) / bins)),
+                lambda x: (
+                    np.cos((theta_range * x + theta_min) / bins)
+                    - np.cos((theta_range * (x + 1) + theta_min) / bins)
+                ),
                 range(bins),
             )
         )
@@ -203,14 +230,22 @@ def plot_histogram_slices(photon_batch: List[optics.Photon], suptitle: str,
     axes.set_ylabel("photon count per bucket (TODO: density)")
 
     axes = plt.subplot(336)
-    plt.bar(x=theta_bins_deg, height=photons_per_steradian_by_theta, width=theta_bin_width_deg)
+    plt.bar(
+        x=theta_bins_deg,
+        height=photons_per_steradian_by_theta,
+        width=theta_bin_width_deg,
+    )
     axes.set_title("radiant intensity photons/sr by theta by bucket area")
     axes.set_xlabel("polar angle (theta) (degrees)")
     axes.set_ylabel("photon count per ... ? (TODO: sr)")
     # notice the higher variance at the poles; N is lower there, which is not good.
 
     axes = plt.subplot(337)
-    plt.bar(x=theta_bins_deg, height=photons_per_steridian_by_theta, width=theta_bin_width_deg)
+    plt.bar(
+        x=theta_bins_deg,
+        height=photons_per_steridian_by_theta,
+        width=theta_bin_width_deg,
+    )
     axes.set_title("radiant intensity photons/sr by photon weights")
     axes.set_xlabel("polar angle (theta) (degrees)")
     axes.set_ylabel("photon count per ... ? (TODO: sr)")
@@ -224,10 +259,16 @@ def plot_histogram_slices(photon_batch: List[optics.Photon], suptitle: str,
     axes.set_thetamin(-theta_max * 180 / np.pi)
     axes.set_thetamax(theta_max * 180 / np.pi)
     axes.bar(
-        theta_bins_rad, photons_per_steridian_by_theta, width=theta_bin_width_rad, color="black"
+        theta_bins_rad,
+        photons_per_steridian_by_theta,
+        width=theta_bin_width_rad,
+        color="black",
     )
     axes.bar(
-        -theta_bins_rad, photons_per_steridian_by_theta, width=theta_bin_width_rad, color="black"
+        -theta_bins_rad,
+        photons_per_steridian_by_theta,
+        width=theta_bin_width_rad,
+        color="black",
     )
     axes.set_xlabel("polar angle (theta) (degrees)")
     axes.set_ylabel("photon count per ... ? (TODO: sr)")

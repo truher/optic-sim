@@ -3,6 +3,7 @@
 
 This is cribbed from https://github.com/DCC-Lab/PyTissueOptics.
 """
+# black formatted
 
 from __future__ import annotations
 import copy
@@ -11,15 +12,17 @@ import random
 from typing import List, Tuple
 import numpy as np
 
+
 class Vector:
-    """ Supports rotation."""
+    """Supports rotation."""
+
     def __init__(self, x: float = 0, y: float = 0, z: float = 0):
         self._x = x
         self._y = y
         self._z = z
 
     def any_perpendicular(self) -> Vector:
-        """ make er for ez"""
+        """make er for ez"""
         if self._z < self._x:
             return Vector(self._y, -self._x, 0)
         return Vector(0, -self._z, self._y)
@@ -85,15 +88,15 @@ class UnitVector(Vector):
         x = np.sin(theta) * np.cos(phi)
         y = np.sin(theta) * np.sin(phi)
         z = np.cos(theta)
-        return UnitVector(x,y,z)
+        return UnitVector(x, y, z)
 
     @staticmethod
     def cartesian(x: float, y: float, z: float) -> UnitVector:
-        v = Vector(x,y,z).normalize()
+        v = Vector(x, y, z).normalize()
         return UnitVector(v._x, v._y, v._z)
 
     def phi(self) -> float:
-        """ Returns [-pi, pi]."""
+        """Returns [-pi, pi]."""
         # use np.arctan2 in vectorized version
         return math.atan2(self._y, self._x)
 
@@ -101,12 +104,15 @@ class UnitVector(Vector):
         # use np.arccos in vectorized version
         return math.acos(self._z)
 
+
 class Photon:
     def __init__(self, R: Vector, EZ: UnitVector):
-        self.r = R # local coordinate position
-        self.ez = EZ # propagation direction
-        self.er = self.ez.any_perpendicular() # perpendicular to direction, used for rotation
-        self.weight = 1 # zero means ignore.
+        self.r = R  # local coordinate position
+        self.ez = EZ  # propagation direction
+        self.er = (
+            self.ez.any_perpendicular()
+        )  # perpendicular to direction, used for rotation
+        self.weight = 1  # zero means ignore.
 
     @staticmethod
     def spherical(x: float, y: float, z: float, theta: float, phi: float) -> Photon:
@@ -146,8 +152,10 @@ class Photon:
         return alive
 
     def __str__(self) -> str:
-        return (f"Photon: x={self.r._x:.2f} y={self.r._y:.2f} z={self.r._z:.2f} "
-                f"theta={self.ez.theta():.2f} phi={self.ez.phi():.2f}")
+        return (
+            f"Photon: x={self.r._x:.2f} y={self.r._y:.2f} z={self.r._z:.2f} "
+            f"theta={self.ez.theta():.2f} phi={self.ez.phi():.2f}"
+        )
 
 
 class Source:
@@ -156,7 +164,7 @@ class Source:
 
     def make_photons(self, photon_count: int) -> List[Photon]:
         photons = []
-        for pi in range(photon_count): # pylint: disable=unused-variable
+        for pi in range(photon_count):  # pylint: disable=unused-variable
             p = self.newPhoton()
             photons.append(p)
         return photons
@@ -220,24 +228,27 @@ class RealLEDSource(Source):
 
 
 class Diffuser:
-    """ Something that changes photon direction.
+    """Something that changes photon direction.
 
     Now mutates rather than copying.
     Examples: diffuser, retroreflector.
     """
+
     def __init__(self, g: float, absorption: float):
         """
-            g: Henyey and Greenstein scattering parameter.
-                0 is iso, 1 is no scattering, -1 is reflection.
-            absorption: mostly useful for the diffuser
+        g: Henyey and Greenstein scattering parameter.
+            0 is iso, 1 is no scattering, -1 is reflection.
+        absorption: mostly useful for the diffuser
         """
         self._g = g
         self._absorption = absorption
 
     def getScatteringAngles(self) -> Tuple[float, float]:
-        """ Henyey and Greenstein scattering. This is from material.py. """
+        """Henyey and Greenstein scattering. This is from material.py."""
         phi = np.random.random() * 2 * np.pi
-        temp = (1 - self._g * self._g) / (1 - self._g + 2 * self._g * np.random.random())
+        temp = (1 - self._g * self._g) / (
+            1 - self._g + 2 * self._g * np.random.random()
+        )
         cost = (1 + self._g * self._g - temp * temp) / (2 * self._g)
         return np.arccos(cost), phi
 
@@ -255,11 +266,12 @@ class Diffuser:
 
 
 class Lightbox:
-    """ Represents the box between the source and diffuser.
+    """Represents the box between the source and diffuser.
 
     Sides are somewhat reflective.
     Now mutates rather than copying.
     """
+
     def __init__(self, height: float, size: float):
         """
         height: top of the box above the source
@@ -269,16 +281,16 @@ class Lightbox:
         self._size = size
 
     def propagate(self, photons: List[Photon]) -> None:
-        """ Propagate (mutate) photons through the light box to the top."""
+        """Propagate (mutate) photons through the light box to the top."""
 
-        absorption = 0.1 # polished metal inside
+        absorption = 0.1  # polished metal inside
         for p in photons:
             # photon starts at p.r(x,y).  assume p.r(z) is zero (todo: fix that)
             if not p.isAlive:
                 continue
             if p.ez._z < 0:
                 p.weight = 0
-                continue # this shouldn't happen
+                continue  # this shouldn't happen
 
             p.r._x = p.r._x + self._height * p.ez._x / p.ez._z
             p.r._y = p.r._y + self._height * p.ez._y / p.ez._z
@@ -286,41 +298,43 @@ class Lightbox:
 
             done_reflecting = False
             while not done_reflecting:
-                if p.r._x < -self._size/2:
+                if p.r._x < -self._size / 2:
                     p.r._x = -self._size - p.r._x
                     p.ez._x *= -1
                     p.er._x *= -1
                     if np.random.random() < absorption:
                         break
-                elif p.r._x > self._size/2:
+                elif p.r._x > self._size / 2:
                     p.r._x = self._size - p.r._x
                     p.ez._x *= -1
                     p.er._x *= -1
                     if np.random.random() < absorption:
                         break
-                elif p.r._y < -self._size/2:
+                elif p.r._y < -self._size / 2:
                     p.r._y = -self._size - p.r._y
                     p.ez._y *= -1
                     p.er._y *= -1
                     if np.random.random() < absorption:
                         break
-                elif p.r._y > self._size/2:
+                elif p.r._y > self._size / 2:
                     p.r._y = self._size - p.r._y
                     p.ez._y *= -1
                     p.er._y *= -1
                     if np.random.random() < absorption:
                         break
-                if (p.r._x >= -self._size / 2 and p.r._x <= self._size / 2
-                    and p.r._y >= -self._size / 2 and p.r._y <= self._size / 2):
+                if (
+                    p.r._x >= -self._size / 2
+                    and p.r._x <= self._size / 2
+                    and p.r._y >= -self._size / 2
+                    and p.r._y <= self._size / 2
+                ):
                     done_reflecting = True
-            if not done_reflecting: # i.e. early break
+            if not done_reflecting:  # i.e. early break
                 p.weight = 0
 
 
-
-
 def propagateToReflector(photons: List[Photon], location: float, size: float) -> None:
-    """ just push them up there.
+    """just push them up there.
       location: z dimension of the reflector.  it's *far*, if the unit is 100 microns,
       and the reflector is 1-10 meters away, that's 10000-100000.
       size: say 10cm on a side, 1000 units.
@@ -337,12 +351,17 @@ def propagateToReflector(photons: List[Photon], location: float, size: float) ->
         p.r._x = p.r._x + distance_z * p.ez._x / p.ez._z
         p.r._y = p.r._y + distance_z * p.ez._y / p.ez._z
         p.r._z = location
-        if p.r._x < -size / 2 or p.r._x > size / 2 or p.r._y < -size / 2 or p.r._y > size / 2:
+        if (
+            p.r._x < -size / 2
+            or p.r._x > size / 2
+            or p.r._y < -size / 2
+            or p.r._y > size / 2
+        ):
             p.weight = 0
 
 
 def propagateToCamera(photons: List[Photon], location: float) -> None:
-    """ back down to the camera.
+    """back down to the camera.
 
     for now it's just the camera plane. TODO: add a counter.
     """
@@ -352,7 +371,7 @@ def propagateToCamera(photons: List[Photon], location: float) -> None:
         if p.ez._z > 0:
             p.weight = 0
             continue
-        distance_z = location - p.r._z # negative number in this case
+        distance_z = location - p.r._z  # negative number in this case
         p.r._x = p.r._x + distance_z * p.ez._x / p.ez._z
         p.r._y = p.r._y + distance_z * p.ez._y / p.ez._z
         p.r._z = location
