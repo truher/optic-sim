@@ -1,7 +1,17 @@
-import optics_cuda 
+import math
+import matplotlib # type: ignore
+import matplotlib.pyplot as plt  # type: ignore
+import numpy as np
+import warnings
+import optics_cuda
+from stats_cuda import *
+
+warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
+
 
 def plot_histogram_slices(
-    photon_batch: optics.Photons,
+    photon_batch: optics_cuda.Photons,
+    size: np.int32,
     suptitle: str,
     x_min: float,
     x_max: float,
@@ -13,64 +23,141 @@ def plot_histogram_slices(
     theta_max: float = np.pi,
     phi_min: float = -np.pi,
     phi_max: float = np.pi,
-    bins: int = 100) -> None:
+) -> None:
 
+    bins = 128  # matches threads etc
+    threads_per_block = bins  # because the threads write back
+    grid_size = (int(math.ceil(size / threads_per_block)), 1, 1)
+    block_size = (threads_per_block, 1, 1)
 
+    null_vector = cp.empty(0, dtype=np.float32)
     fig = plt.figure(figsize=(18, 10))
     fig.suptitle(suptitle)
 
+    h = cp.zeros(bins, dtype=np.int32)
+    histogram(
+        grid_size,
+        block_size,
+        (
+            photon_batch.r_x,
+            null_vector,
+            np.int32(0),
+            h,
+            size,
+            np.float32(x_min),
+            np.float32((x_max - x_min) / bins),
+        ),
+    )
     axes = plt.subplot(331)
-    plt.hist(photon_batch.r_x.get(), bins = bins)
+    plt.plot(np.linspace(x_min, x_max, bins), h.get(), snap=False)
     axes.set_title("photons per bucket by x")
     axes.set_xlabel("x dimension (TODO: unit)")
     axes.set_ylabel("photon count per bucket (TODO: density)")
 
+    h = cp.zeros(bins, dtype=np.int32)
+    histogram(
+        grid_size,
+        block_size,
+        (
+            photon_batch.r_y,
+            null_vector,
+            np.int32(0),
+            h,
+            size,
+            np.float32(y_min),
+            np.float32((y_max - y_min) / bins),
+        ),
+    )
     axes = plt.subplot(332)
-    plt.hist(photon_batch.r_y.get(), bins=bins)
+    plt.plot(np.linspace(y_min, y_max, bins), h.get(), snap=False)
     axes.set_title("photons per bucket by y")
     axes.set_xlabel("y dimension (TODO: unit)")
     axes.set_ylabel("photon count per bucket (TODO: density)")
 
+    h = cp.zeros(bins, dtype=np.int32)
+    histogram(
+        grid_size,
+        block_size,
+        (
+            photon_batch.r_z,
+            null_vector,
+            np.int32(0),
+            h,
+            size,
+            np.float32(z_min),
+            np.float32((z_max - z_min) / bins),
+        ),
+    )
     axes = plt.subplot(333)
-    plt.hist(photon_batch.r_z, bins=bins)
+    plt.plot(np.linspace(z_min, z_max, bins), h.get(), snap=False)
     axes.set_title("photons per bucket by z")
     axes.set_xlabel("z dimension (TODO: unit)")
     axes.set_ylabel("photon count per bucket (TODO: density)")
 
+    h = cp.zeros(bins, dtype=np.int32)
+    histogram(
+        grid_size,
+        block_size,
+        (
+            photon_batch.ez_y,
+            photon_batch.ez_x,
+            np.int32(1),
+            h,
+            size,
+            np.float32(phi_min),
+            np.float32((phi_max - phi_min) / bins),
+        ),
+    )
     axes = plt.subplot(334)
-    plt.hist(x=phi_bins_deg, height=phi_freq, width=phi_bin_width_deg)
+    plt.plot(np.linspace(phi_min, phi_max, bins), h.get(), snap=False)
     axes.set_title("photons per bucket by phi")
     axes.set_xlabel("azimuth (phi) (degrees)")
     axes.set_ylabel("photon count per bucket (TODO: density)")
 
+    h = cp.zeros(bins, dtype=np.int32)
+    histogram(
+        grid_size,
+        block_size,
+        (
+            photon_batch.ez_z,
+            null_vector,
+            np.int32(2),
+            h,
+            size,
+            np.float32(theta_min),
+            np.float32((theta_max - theta_min) / bins),
+        ),
+    )
     axes = plt.subplot(335)
-    plt.bar(x=theta_bins_deg, height=theta_freq, width=theta_bin_width_deg)
+    plt.plot(np.linspace(theta_min, theta_max, bins), h.get(), snap=False)
     axes.set_title("photons per bucket by theta")
     axes.set_xlabel("polar angle (theta) (degrees)")
     axes.set_ylabel("photon count per bucket (TODO: density)")
 
+    theta_range = theta_max - theta_min
+    theta_bins_rad = theta_range * np.arange(bins) / bins + theta_min
+    theta_bin_width_rad = theta_range / bins
+    theta_bucket_angle_steradians = np.array(
+        list(
+            map(
+                lambda x: (
+                    np.cos((theta_range * x + theta_min) / bins)
+                    - np.cos((theta_range * (x + 1) + theta_min) / bins)
+                ),
+                range(bins),
+            )
+        )
+    )
+    photons_per_steradian_by_theta = h.get() / theta_bucket_angle_steradians
     axes = plt.subplot(336)
-    plt.bar(
-        x=theta_bins_deg,
-        height=photons_per_steradian_by_theta,
-        width=theta_bin_width_deg,
+    plt.plot(
+        np.linspace(theta_min, theta_max, bins),
+        photons_per_steradian_by_theta,
+        snap=False,
     )
     axes.set_title("radiant intensity photons/sr by theta by bucket area")
     axes.set_xlabel("polar angle (theta) (degrees)")
     axes.set_ylabel("photon count per ... ? (TODO: sr)")
-    # notice the higher variance at the poles; N is lower there, which is not good.
-
-    axes = plt.subplot(337)
-    plt.bar(
-        x=theta_bins_deg,
-        height=photons_per_steridian_by_theta,
-        width=theta_bin_width_deg,
-    )
-    axes.set_title("radiant intensity photons/sr by photon weights")
-    axes.set_xlabel("polar angle (theta) (degrees)")
-    axes.set_ylabel("photon count per ... ? (TODO: sr)")
-
-    plt.show()
 
     fig = plt.figure(figsize=[15, 12])
     axes = plt.subplot(projection="polar")
@@ -78,17 +165,7 @@ def plot_histogram_slices(
     # mirror the data so it looks nice .. resulting in the weird bounds here
     axes.set_thetamin(-theta_max * 180 / np.pi)
     axes.set_thetamax(theta_max * 180 / np.pi)
-    axes.bar(
-        theta_bins_rad,
-        photons_per_steridian_by_theta,
-        width=theta_bin_width_rad,
-        color="black",
-    )
-    axes.bar(
-        -theta_bins_rad,
-        photons_per_steridian_by_theta,
-        width=theta_bin_width_rad,
-        color="black",
-    )
+    axes.plot(theta_bins_rad, photons_per_steradian_by_theta, color="blue", snap=False)
+    axes.plot(-theta_bins_rad, photons_per_steradian_by_theta, color="blue", snap=False)
     axes.set_xlabel("polar angle (theta) (degrees)")
-    axes.set_ylabel("photon count per ... ? (TODO: sr)")) -> None:
+    axes.set_ylabel("photon count per ... ? (TODO: sr)")
