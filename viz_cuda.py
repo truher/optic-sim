@@ -173,7 +173,7 @@ def plot_histogram_slices(
     axes.set_ylabel("photon count per ... ? (TODO: sr)")
 
 
-def plot_3d(photons: optics_cuda.Photons):
+def plot_3d(photons: optics_cuda.Photons, boxes, labels, colors):
     # number of vectors to plot, should be like visually useful
     size = photons.size()  # ~35ns
     grid_size = 32
@@ -203,4 +203,20 @@ def plot_3d(photons: optics_cuda.Photons):
 
     plot = k3d.plot()
     plot += k3d.vectors(p.get(), d.get())
+
+    for ridx, box in enumerate(boxes):
+        xmin = box[0]
+        xmax = box[1]
+        ymin = box[2]
+        ymax = box[3]
+        z = box[4]
+        plot += k3d.mesh(
+            [[xmin, ymin, z], [xmax, ymin, z], [xmax, ymax, z], [xmin, ymax, z]],
+            [[0, 1, 2], [2, 3, 0]],
+            opacity=0.5,
+            color=colors[ridx],
+            side="both",
+        )
+        plot += k3d.label(labels[ridx], position=(xmax, ymax, z), label_box=False)
+
     plot.display()
