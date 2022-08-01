@@ -22,6 +22,7 @@ def histogram(
     input_data_2: cp.ndarray[np.float32], use for phi, 1:x, 2:y
     mapper: 0 = none, 1 = phi, 2 = theta
     global_histogram: cp.ndarray[np.int32]
+    size: of the input
     """
     # Create a histogram for this block.  Size must match bins and threads.
     block_histogram = jit.shared_memory(np.int32, 128)
@@ -54,3 +55,20 @@ def histogram(
 
     # Sum the block-local histograms into a global histogram.
     jit.atomic_add(global_histogram, jit.threadIdx.x, block_histogram[jit.threadIdx.x])
+
+
+@jit.rawkernel()
+def select_and_stack(i0, i1, i2, i3, i4, i5, p, d, selection_size, scale):  # Nx3
+    """Take six big vectors as input (three position three direction)
+    and return two smaller 3d vectors (one position one direction) suitable for
+    plotting.
+    """
+    idx = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
+    if idx < selection_size:
+        s_i = idx * scale
+        p[(idx, 0)] = i0[s_i]
+        p[(idx, 1)] = i1[s_i]
+        p[(idx, 2)] = i2[s_i]
+        d[(idx, 0)] = i3[s_i]
+        d[(idx, 1)] = i4[s_i]
+        d[(idx, 2)] = i5[s_i]

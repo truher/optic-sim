@@ -156,6 +156,9 @@ class Photons:
         self.ez_y = None
         self.ez_z = None
 
+    def size(self):
+        return self.r_x.size
+
 
 class Source:
     def make_photons(self, size: np.int32) -> Photons:

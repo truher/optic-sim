@@ -1,8 +1,9 @@
 import math
-import matplotlib # type: ignore
-import matplotlib.pyplot as plt  # type: ignore
-import numpy as np
 import warnings
+import numpy as np
+import matplotlib  # type: ignore
+import matplotlib.pyplot as plt  # type: ignore
+import k3d  # type:ignore
 import optics_cuda
 from stats_cuda import *
 
@@ -11,7 +12,7 @@ warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
 
 def plot_histogram_slices(
     photon_batch: optics_cuda.Photons,
-    size: np.int32,
+    # size: np.int32,
     suptitle: str,
     x_min: float,
     x_max: float,
@@ -25,6 +26,7 @@ def plot_histogram_slices(
     phi_max: float = np.pi,
 ) -> None:
 
+    size = photon_batch.size()  # ~35ns
     bins = 128  # matches threads etc
     threads_per_block = bins  # because the threads write back
     grid_size = (int(math.ceil(size / threads_per_block)), 1, 1)
@@ -169,3 +171,36 @@ def plot_histogram_slices(
     axes.plot(-theta_bins_rad, photons_per_steradian_by_theta, color="blue", snap=False)
     axes.set_xlabel("polar angle (theta) (degrees)")
     axes.set_ylabel("photon count per ... ? (TODO: sr)")
+
+
+def plot_3d(photons: optics_cuda.Photons):
+    # number of vectors to plot, should be like visually useful
+    size = photons.size()  # ~35ns
+    grid_size = 32
+    block_size = 32
+    selection_size = grid_size * block_size
+    scale = np.int32(size // selection_size)
+
+    p = cp.zeros((selection_size, 3), dtype=np.float32)
+    d = cp.zeros((selection_size, 3), dtype=np.float32)
+
+    select_and_stack(
+        (grid_size,),
+        (block_size,),
+        (
+            photons.r_x,
+            photons.r_y,
+            photons.r_z,
+            photons.ez_x,
+            photons.ez_y,
+            photons.ez_z,
+            p,
+            d,
+            selection_size,
+            scale,
+        ),
+    )
+
+    plot = k3d.plot()
+    plot += k3d.vectors(p.get(), d.get())
+    plot.display()
