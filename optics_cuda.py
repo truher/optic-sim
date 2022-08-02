@@ -13,6 +13,7 @@ from typing import Tuple
 import cupy as cp  # type: ignore
 import numpy as np
 from cupyx import jit  # type: ignore
+from stats_cuda import *
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 print(f"CuPy version {cp.__version__}")
@@ -170,6 +171,37 @@ class Photons:
         self.ez_z = cp.compress(self.alive, self.ez_z)
         self.alive = cp.compress(self.alive, self.alive)
 
+    def sample(self):
+        """Take every N-th for plotting 1024.  Returns
+        a type the plotter likes, which is two (N,3) vectors"""
+        size = self.size()  # ~35ns
+        grid_size = 32
+        block_size = 32
+        selection_size = grid_size * block_size
+        scale = np.int32(size // selection_size)
+
+        p = cp.zeros((selection_size, 3), dtype=np.float32)
+        d = cp.zeros((selection_size, 3), dtype=np.float32)
+
+        select_and_stack(
+            (grid_size,),
+            (block_size,),
+            (
+                self.r_x,
+                self.r_y,
+                self.r_z,
+                self.ez_x,
+                self.ez_y,
+                self.ez_z,
+                p,
+                d,
+                selection_size,
+                scale
+            ),
+        )
+
+        return (p, d)
+
 
 class Source:
     def make_photons(self, size: np.int32) -> Photons:
@@ -212,6 +244,60 @@ class LambertianSource(Source):
         photons.alive = cp.ones(size, dtype=bool)
         return photons
 
+
+propagate_kernel = cp.ElementwiseKernel(
+    in_params = 'raw uint64 seed, raw float32 absorption, raw float32 height, raw float32 size',
+    out_params = 'float32 r_x, float32 r_y, float32 r_z, float32 ez_x, float32 ez_y, float32 ez_z, bool alive',
+    preamble = """
+    #include <curand.h>
+    #include <curand_kernel.h>""",
+    loop_prep = """
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    curandState state;
+    curand_init(seed, idx, 0, &state);""",
+    operation = """
+    if (!alive) continue;
+    if (ez_z < 0) {
+        alive = false;
+        continue;
+    }
+    r_x = r_x + height * ez_x / ez_z;
+    r_y = r_y + height * ez_y / ez_z;
+    r_z = height;
+    
+    bool done_reflecting = false;
+    while (!done_reflecting) {
+        if (r_x < -size / 2) {
+            r_x = -size - r_x;
+            ez_x *= -1;
+            // er_x *= -1; // no more persistent perpendicular
+            if (curand_uniform(&state) < absorption) break;
+        } else if (r_x > size / 2) {
+            r_x = size - r_x;
+            ez_x *= -1;
+            // er_x *= -1;
+            if (curand_uniform(&state) < absorption) break;
+        } else if (r_y < -size / 2) {
+            r_y = -size - r_y;
+            ez_y *= -1;
+            // er_y *= -1;
+            if (curand_uniform(&state) < absorption) break;
+        } else if (r_y > size / 2) {
+            r_y = size - r_y;
+            ez_y *= -1;
+            // er_y *= -1;
+            if (curand_uniform(&state) < absorption) break;
+        }
+        if (r_x >= -size / 2 && r_x <= size / 2 && r_y >= -size / 2 && r_y <= size / 2)
+            done_reflecting = true;
+    }
+    if (!done_reflecting) {
+        alive = false;
+    }
+    """,
+    no_return = True)
+
+
 class Lightbox:
     """Represents the box between the source and diffuser.
 
@@ -226,6 +312,12 @@ class Lightbox:
         self._height = height
         self._size = size
 
-#    def propagate(self, photons: List[Photon]) -> None:
-#        """Propagate (mutate) photons through the light box to the top."""
-#        absorption = 0.1  # polished metal inside
+    def propagate(self, photons: Photons) -> None:
+        """Propagate (mutate) photons through the light box to the top."""
+        seed = np.random.default_rng().integers(1, np.iinfo(np.uint64).max, dtype=np.uint64)
+        absorption = np.float32(0.1) # polished metal inside
+        propagate_kernel(seed, absorption, self._height, self._size,
+                         photons.r_x, photons.r_y, photons.r_z,
+                         photons.ez_x, photons.ez_y, photons.ez_z,
+                         photons.alive)
+        photons.prune() # remove the absorbed photons
