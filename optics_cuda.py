@@ -155,6 +155,7 @@ class Photons:
         self.ez_x = None
         self.ez_y = None
         self.ez_z = None
+        self.weight = None
 
     def size(self):
         return self.r_x.size
@@ -198,6 +199,7 @@ class LambertianSource(Source):
         spherical_to_cartesian_raw(
             (128,), (1024,), (photons.ez_z, photons.ez_x, photons.ez_y, size)
         )
+        photons.alive = cp.ones(size, dtype=bool)
         return photons
 
 class Lightbox:
@@ -214,6 +216,6 @@ class Lightbox:
         self._height = height
         self._size = size
 
-    def propagate(self, photons: List[Photon]) -> None:
-        """Propagate (mutate) photons through the light box to the top."""
-        absorption = 0.1  # polished metal inside
+#    def propagate(self, photons: List[Photon]) -> None:
+#        """Propagate (mutate) photons through the light box to the top."""
+#        absorption = 0.1  # polished metal inside
