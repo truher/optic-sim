@@ -155,10 +155,20 @@ class Photons:
         self.ez_x = None
         self.ez_y = None
         self.ez_z = None
-        self.weight = None
+        self.alive = None
 
     def size(self):
         return self.r_x.size
+
+    def prune(self):
+        """ remove dead photons """
+        self.r_x = cp.compress(self.alive, self.r_x)
+        self.r_y = cp.compress(self.alive, self.r_y)
+        self.r_z = cp.compress(self.alive, self.r_z)
+        self.ez_x = cp.compress(self.alive, self.ez_x)
+        self.ez_y = cp.compress(self.alive, self.ez_y)
+        self.ez_z = cp.compress(self.alive, self.ez_z)
+        self.alive = cp.compress(self.alive, self.alive)
 
 
 class Source:

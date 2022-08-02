@@ -173,7 +173,7 @@ def plot_histogram_slices(
     axes.set_ylabel("photon count per ... ? (TODO: sr)")
 
 
-def plot_3d(photons: optics_cuda.Photons, boxes, labels, colors):
+def plot_3d(photons: optics_cuda.Photons, ray_length, boxes, labels, colors):
     # number of vectors to plot, should be like visually useful
     size = photons.size()  # ~35ns
     grid_size = 32
@@ -198,6 +198,7 @@ def plot_3d(photons: optics_cuda.Photons, boxes, labels, colors):
             d,
             selection_size,
             scale,
+            ray_length
         ),
     )
 

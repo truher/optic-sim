@@ -58,7 +58,7 @@ def histogram(
 
 
 @jit.rawkernel()
-def select_and_stack(i0, i1, i2, i3, i4, i5, p, d, selection_size, scale):  # Nx3
+def select_and_stack(i0, i1, i2, i3, i4, i5, p, d, selection_size, scale, ray_length):  # Nx3
     """Take six big vectors as input (three position three direction)
     and return two smaller 3d vectors (one position one direction) suitable for
     plotting.
@@ -69,6 +69,10 @@ def select_and_stack(i0, i1, i2, i3, i4, i5, p, d, selection_size, scale):  # Nx
         p[(idx, 0)] = i0[s_i]
         p[(idx, 1)] = i1[s_i]
         p[(idx, 2)] = i2[s_i]
-        d[(idx, 0)] = i3[s_i]
-        d[(idx, 1)] = i4[s_i]
-        d[(idx, 2)] = i5[s_i]
+        d[(idx, 0)] = i3[s_i] * ray_length
+        d[(idx, 1)] = i4[s_i] * ray_length
+        d[(idx, 2)] = i5[s_i] * ray_length
+
+#@jit.rawkernel()
+#def partition():
+#    """Swap the dead ones to the end."""
