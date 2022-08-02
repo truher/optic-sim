@@ -199,3 +199,21 @@ class LambertianSource(Source):
             (128,), (1024,), (photons.ez_z, photons.ez_x, photons.ez_y, size)
         )
         return photons
+
+class Lightbox:
+    """Represents the box between the source and diffuser.
+
+    Sides are somewhat reflective.
+    """
+
+    def __init__(self, height: float, size: float):
+        """
+        height: top of the box above the source
+        size: full length or width, box is square.
+        """
+        self._height = height
+        self._size = size
+
+    def propagate(self, photons: List[Photon]) -> None:
+        """Propagate (mutate) photons through the light box to the top."""
+        absorption = 0.1  # polished metal inside
