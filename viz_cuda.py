@@ -178,7 +178,7 @@ def plot_3d(bundles, ray_lengths, boxes, labels, colors):
     for ridx, bundle in enumerate(bundles):
         (p, d) = bundle
         ray_length = ray_lengths[ridx]
-        plot += k3d.vectors(p.get(), d.get() * ray_length)
+        plot += k3d.vectors(p.get(), d.get() * ray_length, color=colors[ridx])
         box = boxes[ridx]
         xmin = box[0]
         xmax = box[1]
