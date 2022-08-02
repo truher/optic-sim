@@ -41,11 +41,7 @@ def _hanley_loop(random_inout: cp.ndarray, g: np.float32, size: np.int32) -> Non
 
 
 def get_scattering_theta(g: np.float32, size: np.int32) -> cp.ndarray:
-    print("G")
-    print(g)
-    print(type(g))
     random_input = cp.random.uniform(np.float32(0), np.float32(2.0 * g), np.int32(size), dtype=np.float32)
-    print(random_input)
     _hanley_loop((128,), (1024,), (random_input, np.float32(g), np.int32(size)))
     return random_input
 
@@ -60,100 +56,64 @@ def get_scattering_phi(size: np.int32) -> cp.ndarray:
 # SCATTERING
 
 
-#@jit.rawkernel(device=True)
-#def any_perpendicular(
-#    vx: np.float32, vy: np.float32, vz: np.float32
-#) -> Tuple[np.float32, np.float32, np.float32]:
-#    if vz < vx:
-#        (rx, ry, rz) = (vy, -vx, np.float32(0.0))
-#    else:
-#        (rx, ry, rz) = (np.float32(0.0), -vz, vy)
-#    return np.zeros(3, dtype=np.float32)
-#    #return np.array([rx, ry, rz])
-
-
-#@jit.rawkernel(device=True)
-#def normalize(
-#    x: np.float32, y: np.float32, z: np.float32
-#) -> Tuple[np.float32, np.float32, np.float32]:
-#    n = cp.sqrt(x * x + y * y + z * z)
-#    return (x / n, y / n, z / n)
-
-
-#@jit.rawkernel(device=True)
-#def unitary_perpendicular(
-#    vx: np.float32, vy: np.float32, vz: np.float32
-#) -> Tuple[np.float32, np.float32, np.float32]:
-## WTF
-#
-##    (ux, uy, uz) = any_perpendicular(vx, vy, vz)
-#
-#    if vz < vx:
-#        (ux, uy, uz) = (vy, -vx, np.float32(0.0))
-#    else:
-#        (ux, uy, uz) = (np.float32(0.0), -vz, vy)
-#    n = cp.sqrt(ux * ux + uy * uy + uz * uz)
-#    return (ux / n, uy / n, uz / n)
-#
-##    # this works (ux, uy, uz) = (vx, vy, vz)
-##    return normalize(ux, uy, uz)
-
-
-#@jit.rawkernel(device=True)
-#def do_rotation(
-#    X: np.float32,
-#    Y: np.float32,
-#    Z: np.float32,
-#    ux: np.float32,
-#    uy: np.float32,
-#    uz: np.float32,
-#    theta: np.float32,
-#) -> Tuple[np.float32, np.float32, np.float32]:
-#    """Rotate v around u."""
-#    cost = cp.cos(theta)
-#    sint = cp.sin(theta)
-#    one_cost = 1 - cost
-#
-#    x = (
-#        (cost + ux * ux * one_cost) * X
-#        + (ux * uy * one_cost - uz * sint) * Y
-#        + (ux * uz * one_cost + uy * sint) * Z
-#    )
-#    y = (
-#        (uy * ux * one_cost + uz * sint) * X
-#        + (cost + uy * uy * one_cost) * Y
-#        + (uy * uz * one_cost - ux * sint) * Z
-#    )
-#    z = (
-#        (uz * ux * one_cost - uy * sint) * X
-#        + (uz * uy * one_cost + ux * sint) * Y
-#        + (cost + uz * uz * one_cost) * Z
-#    )
-#
-#    return (x, y, z)
-
-# this is to avoid returning a tuple
 @jit.rawkernel(device=True)
-def rotate_x(X, Y, Z, ux, uy, uz, cost, sint, one_cost) -> np.float32:
-    return (
+def any_perpendicular(
+    vx: np.float32, vy: np.float32, vz: np.float32
+) -> Tuple[np.float32, np.float32, np.float32]:
+    if vz < vx:
+        return (vy, -vx, np.float32(0.0))
+    else:
+        return  (np.float32(0.0), -vz, vy)
+
+
+@jit.rawkernel(device=True)
+def normalize(
+    x: np.float32, y: np.float32, z: np.float32
+) -> Tuple[np.float32, np.float32, np.float32]:
+    n = cp.sqrt(x * x + y * y + z * z)
+    return (x / n, y / n, z / n)
+
+
+@jit.rawkernel(device=True)
+def unitary_perpendicular(
+    vx: np.float32, vy: np.float32, vz: np.float32
+) -> Tuple[np.float32, np.float32, np.float32]:
+    (ux, uy, uz) = any_perpendicular(vx, vy, vz)
+    return normalize(ux, uy, uz)
+
+
+@jit.rawkernel(device=True)
+def do_rotation(
+    X: np.float32,
+    Y: np.float32,
+    Z: np.float32,
+    ux: np.float32,
+    uy: np.float32,
+    uz: np.float32,
+    theta: np.float32,
+) -> Tuple[np.float32, np.float32, np.float32]:
+    """Rotate v around u."""
+    cost = cp.cos(theta)
+    sint = cp.sin(theta)
+    one_cost = 1 - cost
+
+    x = (
         (cost + ux * ux * one_cost) * X
         + (ux * uy * one_cost - uz * sint) * Y
         + (ux * uz * one_cost + uy * sint) * Z
     )
-@jit.rawkernel(device=True)
-def rotate_y(X, Y, Z, ux, uy, uz, cost, sint, one_cost) -> np.float32:
-    return (
+    y = (
         (uy * ux * one_cost + uz * sint) * X
         + (cost + uy * uy * one_cost) * Y
         + (uy * uz * one_cost - ux * sint) * Z
     )
-@jit.rawkernel(device=True)
-def rotate_z(X, Y, Z, ux, uy, uz, cost, sint, one_cost) -> np.float32:
-    return (
+    z = (
         (uz * ux * one_cost - uy * sint) * X
         + (uz * uy * one_cost + ux * sint) * Y
         + (cost + uz * uz * one_cost) * Z
     )
+
+    return (x, y, z)
 
 
 @jit.rawkernel()
@@ -171,44 +131,11 @@ def scatter(
     tid = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
     ntid = jit.gridDim.x * jit.blockDim.x
     for i in range(tid, size, ntid):
-
-# wtf is going on here?
-# this is the test code
-        # this works (vx[i], vy[i], vz[i]) = (vx[i], vy[i], vz[i])
-        #(vx[i], vy[i], vz[i]) = unitary_perpendicular(vx[i], vy[i], vz[i])
-
-        # make "any" perpendicular
-        if vz[i] < vx[i]:
-            (ux, uy, uz) = (vy[i], -vx[i], np.float32(0.0))
-        else:
-            (ux, uy, uz) = (np.float32(0.0), -vz[i], vy[i])
-        # normalize it
-        n = cp.sqrt(ux * ux + uy * uy + uz * uz)
-
-        (ux, uy, uz) = (ux / n, uy / n, uz / n)
-
-# this is the real code
-#        (ux, uy, uz) = unitary_perpendicular(vx[i], vy[i], vz[i])
-#
-#        # first rotate the perpendicular around the photon axis
-        cost = cp.cos(phi[i])
-        sint = cp.sin(phi[i])
-        one_cost = 1 - cost
-        tx = rotate_x(ux, uy, uz, vx[i], vy[i], vz[i], cost, sint, one_cost)
-        ty = rotate_y(ux, uy, uz, vx[i], vy[i], vz[i], cost, sint, one_cost)
-        tz = rotate_z(ux, uy, uz, vx[i], vy[i], vz[i], cost, sint, one_cost)
-        (ux, uy, uz) = (tx, ty, tz)
-#        (ux, uy, uz) = do_rotation(ux, uy, uz, vx[i], vy[i], vz[i], phi[i])
-#
-#        # then rotate the photon around that perpendicular
-        cost = cp.cos(theta[i])
-        sint = cp.sin(theta[i])
-        one_cost = 1 - cost
-        tx = rotate_x(vx[i], vy[i], vz[i], ux, uy, uz, cost, sint, one_cost)
-        ty = rotate_y(vx[i], vy[i], vz[i], ux, uy, uz, cost, sint, one_cost)
-        tz = rotate_z(vx[i], vy[i], vz[i], ux, uy, uz, cost, sint, one_cost)
-        (vx[i], vy[i], vz[i]) = (tx, ty, tz)
-#        (vx[i], vy[i], vz[i]) = do_rotation(vx[i], vy[i], vz[i], ux, uy, uz, theta[i])
+        (ux, uy, uz) = unitary_perpendicular(vx[i], vy[i], vz[i])
+        # first rotate the perpendicular around the photon axis
+        (ux, uy, uz) = do_rotation(ux, uy, uz, vx[i], vy[i], vz[i], phi[i])
+        # then rotate the photon around that perpendicular
+        (vx[i], vy[i], vz[i]) = do_rotation(vx[i], vy[i], vz[i], ux, uy, uz, theta[i])
 
 
 def get_phi(y: cp.ndarray, x: cp.ndarray) -> cp.ndarray:
@@ -400,6 +327,7 @@ class Lightbox:
     def propagate(self, photons: Photons) -> None:
         """Propagate (mutate) photons through the light box to the top.
         Deletes absorbed photons.
+        TODO: make this faster, it takes way too long; maybe a real raw kernel with a smaller grid?
         """
         seed = np.random.default_rng().integers(1, np.iinfo(np.uint64).max, dtype=np.uint64)
         absorption = np.float32(0.1) # polished metal inside
@@ -407,7 +335,7 @@ class Lightbox:
                                    photons.r_x, photons.r_y, photons.r_z,
                                    photons.ez_x, photons.ez_y, photons.ez_z,
                                    photons.alive,
-                                   block_size = 32) # smaller block = less tail latency?
+                                   block_size = 32) # smaller block = less tail latency?  .. nope.
         photons.prune() # remove the absorbed photons
 
 
@@ -434,14 +362,12 @@ class Diffuser:
         size = np.int32(photons.size()) # TODO eliminate this
         phi = get_scattering_phi(size)
         theta = get_scattering_theta(self._g, size)
-        print("theta")
-        print(theta)
-        _diffuse(self, photons, theta, phi, size)
-
-    def _diffuse(self, photons, theta, phi, size) -> None:
-
         block_size = 1024 # max
         grid_size = int(math.ceil(size/block_size))
         scatter((grid_size,), (block_size,), (photons.ez_x, photons.ez_y, photons.ez_z, theta, phi, size))
 
 
+def propagate_to_reflector(photons, location, size):
+    # first get rid of the ones not heading that way
+    photons.alive = photons.ez_z > 0
+    photons.prune()
