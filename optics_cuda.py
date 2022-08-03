@@ -369,6 +369,13 @@ class Diffuser:
         scatter((grid_size,), (block_size,), (photons.ez_x, photons.ez_y, photons.ez_z, theta, phi, size))
 
 
+def prune_outliers(photons, size):
+    cp.logical_and(photons.alive, photons.r_x >= -size/2, out=photons.alive)
+    cp.logical_and(photons.alive, photons.r_x <= size/2, out=photons.alive)
+    cp.logical_and(photons.alive, photons.r_y >= -size/2, out=photons.alive)
+    cp.logical_and(photons.alive, photons.r_y <= size/2, out=photons.alive)
+    photons.prune()
+
 def propagate_to_reflector(photons, location, size):
     """ size: reflector size """
     # TODO: make a raw kernel for this whole function
@@ -382,13 +389,6 @@ def propagate_to_reflector(photons, location, size):
     photons.r_y = photons.r_y + distance_z * photons.ez_y / photons.ez_z
     photons.r_z = location_v
 
-    cp.logical_and(photons.alive, photons.r_x >= -size/2, out=photons.alive)
-    cp.logical_and(photons.alive, photons.r_x <= size/2, out=photons.alive)
-    cp.logical_and(photons.alive, photons.r_y >= -size/2, out=photons.alive)
-    cp.logical_and(photons.alive, photons.r_y <= size/2, out=photons.alive)
-
-    photons.prune()
-
 def propagate_to_camera(photons, location):
     # prune photons heading the wrong way
     photons.alive = photons.ez_z < 0
@@ -399,5 +399,4 @@ def propagate_to_camera(photons, location):
     photons.r_x = photons.r_x + distance_z * photons.ez_x / photons.ez_z
     photons.r_y = photons.r_y + distance_z * photons.ez_y / photons.ez_z
     photons.r_z = location_v
-
 
