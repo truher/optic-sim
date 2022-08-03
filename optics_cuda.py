@@ -371,8 +371,8 @@ class Diffuser:
 
 def propagate_to_reflector(photons, location, size):
     """ size: reflector size """
+    # TODO: make a raw kernel for this whole function
     # first get rid of the ones not heading that way
-    # TODO: make a raw kernel for this
     photons.alive = photons.ez_z > 0
     photons.prune()
 
@@ -389,5 +389,15 @@ def propagate_to_reflector(photons, location, size):
 
     photons.prune()
 
+def propagate_to_camera(photons, location):
+    # prune photons heading the wrong way
+    photons.alive = photons.ez_z < 0
+    photons.prune()
+
+    location_v = cp.full(photons.size(), location, dtype=np.float32)
+    distance_z = location_v - photons.r_z
+    photons.r_x = photons.r_x + distance_z * photons.ez_x / photons.ez_z
+    photons.r_y = photons.r_y + distance_z * photons.ez_y / photons.ez_z
+    photons.r_z = location_v
 
 
