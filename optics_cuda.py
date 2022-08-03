@@ -187,7 +187,7 @@ class Photons:
         size = self.size()  # ~35ns
         grid_size = 32
         block_size = 32
-        selection_size = grid_size * block_size
+        selection_size = min(size, grid_size * block_size)
         scale = np.int32(size // selection_size)
 
         p = cp.zeros((selection_size, 3), dtype=np.float32)
@@ -368,6 +368,27 @@ class Diffuser:
 
 
 def propagate_to_reflector(photons, location, size):
+    """ size: reflector size """
     # first get rid of the ones not heading that way
+    # TODO: make a raw kernel for this
     photons.alive = photons.ez_z > 0
     photons.prune()
+    print(photons.ez_z)
+
+    location_v = cp.full(photons.size(), location, dtype=np.float32)
+    distance_z = location_v - photons.r_z
+    photons.r_x = photons.r_x + distance_z * photons.ez_x / photons.ez_z
+    photons.r_y = photons.r_y + distance_z * photons.ez_y / photons.ez_z
+    photons.r_z = location_v
+    print(photons.ez_z)
+
+    cp.logical_and(photons.alive, photons.r_x >= -size/2, out=photons.alive)
+    cp.logical_and(photons.alive, photons.r_x <= size/2, out=photons.alive)
+    cp.logical_and(photons.alive, photons.r_y >= -size/2, out=photons.alive)
+    cp.logical_and(photons.alive, photons.r_y <= size/2, out=photons.alive)
+    print(photons.ez_z)
+    photons.prune()
+    print(photons.ez_z)
+
+
+
