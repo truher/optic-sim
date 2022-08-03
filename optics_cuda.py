@@ -434,6 +434,14 @@ class SimulationResult:
         self._source_stage = ResultStage()
         # photons at the top of the light box
         self._box_stage = ResultStage()
+        # photons scattered by the diffuser
+        self._diffuser_stage = ResultStage()
+        # photons indicent at the reflector
+        self._outbound_stage = ResultStage()
+        # photons reflected by the reflector
+        self._inbound_stage = ResultStage()
+        # photons arriving at the camera plane
+        self._camera_plane_stage = ResultStage()
 
 class Simulator:
     """The specific geometry etc of this simulation.
@@ -492,6 +500,7 @@ class Simulator:
         phi_min: float = -np.pi,
         phi_max: float = np.pi):
         """Make and store a set of histograms."""
+        # TODO: do bounds automatically
 
         null_vector = cp.empty(0, dtype=np.float32)
         Simulator.one_histogram(128, 
@@ -582,12 +591,12 @@ class Simulator:
 
         self._results._source_stage._sample = PhotonsStacked(photons.sample())
         self._results._source_stage._ray_length = 1
-        self._results._source_stage._ray_color = 0xffff00
+        self._results._source_stage._ray_color = 0xff0000
         self._results._source_stage._box = [-source_size/2, source_size/2, -source_size/2, source_size/2, 0]
-        self._results._source_stage._box_color = 0xff0000
+        self._results._source_stage._box_color = 0x808080
         self._results._source_stage._label = "Source"
 
-        # propagate them through the reflective light box
+        # propagate through the reflective light box
 
         lightbox_height = 400
         lightbox_size = 400
@@ -601,11 +610,95 @@ class Simulator:
                        z_min = 0, z_max = 1000, theta_max = np.pi/2)
         self._results._box_stage._sample = PhotonsStacked(photons.sample())
         self._results._box_stage._ray_length = 100
-        self._results._box_stage._ray_color = 0xffff00
+        self._results._box_stage._ray_color = 0xff0000
         self._results._box_stage._box = [-lightbox_size/2, lightbox_size/2,
                                          -lightbox_size/2, lightbox_size/2, lightbox_height]
-        self._results._box_stage._box_color = 0xff0000
+        self._results._box_stage._box_color = 0x808080
         self._results._box_stage._label = "Lightbox"
+
+        # diffuse through the diffuser
+
+        diffuser = Diffuser(g = np.float32(0.64), absorption = np.float32(0.16))
+        diffuser.diffuse(photons)
+
+        self._results._diffuser_stage._photons_size = photons.size()
+        self.histogram(photons, self._results._diffuser_stage,
+                       x_min = -lightbox_size/2, x_max = lightbox_size/2,
+                       y_min = -lightbox_size/2, y_max = lightbox_size/2,
+                       z_min = 0, z_max = 1000)
+        self._results._diffuser_stage._sample = PhotonsStacked(photons.sample())
+        self._results._diffuser_stage._ray_length = 100
+        self._results._diffuser_stage._ray_color = 0xff0000
+        self._results._diffuser_stage._box = [-lightbox_size/2, lightbox_size/2,
+                                              -lightbox_size/2, lightbox_size/2, lightbox_height]
+        self._results._diffuser_stage._box_color = 0x808080
+        self._results._diffuser_stage._label = "Diffuser"
+
+        # propagate to the reflector
+
+        # TODO: make distance a parameter
+        #reflector_distance = np.float32(100000)
+        reflector_distance = np.float32(50000)
+        #reflector_distance = np.float32(10000)
+        reflector_size = 1000
+        propagate_to_reflector(photons, location = reflector_distance, size = np.float32(1000))
+        # eliminate photons that miss the reflector
+        prune_outliers(photons, size = reflector_size)
+
+        self._results._outbound_stage._photons_size = photons.size()
+        self.histogram(photons, self._results._outbound_stage,
+                       x_min = -reflector_size/2, x_max = reflector_size/2,
+                       y_min = -reflector_size/2, y_max = reflector_size/2,
+                       z_min = 0, z_max = reflector_distance,
+                       theta_max=np.pi/100)  # a narrow beam
+        self._results._outbound_stage._sample = PhotonsStacked(photons.sample())
+        self._results._outbound_stage._ray_length = 100
+        self._results._outbound_stage._ray_color = 0xff0000
+        self._results._outbound_stage._box = [-reflector_size/2, reflector_size/2,
+                                              -reflector_size/2, reflector_size/2, reflector_distance]
+        self._results._outbound_stage._box_color = 0x808080
+        self._results._outbound_stage._label = "Outbound"
+
+        # reflect
+
+        # TODO: guess at absorption
+        reflector = Diffuser(g = np.float32(-0.9925), absorption=np.float32(0.0))
+        reflector.diffuse(photons)
+
+        self._results._inbound_stage._photons_size = photons.size()
+        self.histogram(photons, self._results._inbound_stage,
+                       x_min = -reflector_size/2, x_max = reflector_size/2,
+                       y_min = -reflector_size/2, y_max = reflector_size/2,
+                       z_min = 0, z_max = reflector_distance, theta_min = np.pi*90/100)
+        self._results._inbound_stage._sample = PhotonsStacked(photons.sample())
+        self._results._inbound_stage._ray_length = 100
+        self._results._inbound_stage._ray_color = 0xff0000
+        self._results._inbound_stage._box = [-reflector_size/2, reflector_size/2,
+                                              -reflector_size/2, reflector_size/2, reflector_distance]
+        self._results._inbound_stage._box_color = 0x808080
+        self._results._inbound_stage._label = "Inbound"
+
+        # propagate to the camera
+
+        # make the camera height even with the diffuser
+        camera_distance = np.float32(lightbox_height)
+        propagate_to_camera(photons, location = camera_distance)
+        # eliminate photons that miss the camera by a lot
+        camera_neighborhood = 2000
+        prune_outliers(photons, size = camera_neighborhood)
+
+        self._results._camera_plane_stage._photons_size = photons.size()
+        self.histogram(photons, self._results._camera_plane_stage,
+                       x_min = -camera_neighborhood/2, x_max = camera_neighborhood/2,
+                       y_min = -camera_neighborhood/2, y_max = camera_neighborhood/2,
+                       z_min = 0, z_max = camera_distance)
+        self._results._camera_plane_stage._sample = PhotonsStacked(photons.sample())
+        self._results._camera_plane_stage._ray_length = 100
+        self._results._camera_plane_stage._ray_color = 0xff0000
+        # note offset camera
+        self._results._camera_plane_stage._box = [200, 300, -50, 50, camera_distance]
+        self._results._camera_plane_stage._box_color = 0x0000ff
+        self._results._camera_plane_stage._label = "Camera"
 
 
 class Study:
