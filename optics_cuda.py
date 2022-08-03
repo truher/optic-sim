@@ -404,12 +404,34 @@ class Histogram:
     def __init__(self):
         self._hist = None
         self._bin_edges = None
+        self._title = ""
+        self._xlabel = ""
+        self._ylabel = ""
+
+    def add(self, hist):
+        if self._hist is None:
+            self._hist = hist
+        else:
+            self._hist += hist
 
 class PhotonsStacked:
-    def __init__(self, stack):
+    def __init__(self):
+        self._p = None
+        self._d = None
+
+    def add(self, stack):
         (p, d) = stack
-        self._p = p
-        self._d = d
+        if p is None:
+            raise ValueError()
+        if d is None:
+            raise ValueError()
+        if self._p is None:
+            self._p = p
+            self._d = d
+        else:
+            self._p = np.concatenate([self._p, p])
+            self._d = np.concatenate([self._d, d])
+
 
 class ResultStage:
     def __init__(self):
@@ -420,7 +442,7 @@ class ResultStage:
         self._histogram_ez_phi = Histogram()
         self._histogram_ez_theta = Histogram()
         self._histogram_ez_theta_weighted = Histogram()
-        self._sample = None
+        self._sample = PhotonsStacked()
         self._ray_length = None
         self._ray_color = None
         self._box = None
@@ -483,7 +505,8 @@ class Simulator:
         )
         # TODO this is wrong, it is not edges, it is not lower edges, it is just wrong
         histogram_output._bin_edges = np.linspace(dim_min, dim_max, bins + 1)
-        histogram_output._hist = h.get()
+        #histogram_output._hist = h.get()
+        histogram_output.add(h.get())
         histogram_output._title = title
         histogram_output._xlabel = xlabel
         histogram_output._ylabel = ylabel
@@ -574,22 +597,25 @@ class Simulator:
 
 
 
+    def run_all_waves(self):
+        for i in range(self._waves):
+            self.run()
 
     def run(self):
-        """Run all the waves."""
+        """Add a run to the results."""
         # make some photons
 
         source_size = np.float32(10)
         source = LambertianSource(source_size, source_size)
         photons = source.make_photons(self._bundles)
 
-        self._results._source_stage._photons_size = photons.size()
+        self._results._source_stage._photons_size += photons.size()
         self.histogram(photons, self._results._source_stage,
                        x_min = -source_size/2, x_max = source_size/2,
                        y_min = -source_size/2, y_max = source_size/2,
                        z_min = -5, z_max = 5, theta_max = np.pi/2)
 
-        self._results._source_stage._sample = PhotonsStacked(photons.sample())
+        self._results._source_stage._sample.add(photons.sample())
         self._results._source_stage._ray_length = 1
         self._results._source_stage._ray_color = 0xff0000
         self._results._source_stage._box = [-source_size/2, source_size/2, -source_size/2, source_size/2, 0]
@@ -603,12 +629,12 @@ class Simulator:
         lightbox = Lightbox(height = lightbox_height, size = lightbox_size)
         lightbox.propagate(photons)
 
-        self._results._box_stage._photons_size = photons.size()
+        self._results._box_stage._photons_size += photons.size()
         self.histogram(photons, self._results._box_stage,
                        x_min = -lightbox_size/2, x_max = lightbox_size/2,
                        y_min = -lightbox_size/2, y_max = lightbox_size/2,
                        z_min = 0, z_max = 1000, theta_max = np.pi/2)
-        self._results._box_stage._sample = PhotonsStacked(photons.sample())
+        self._results._box_stage._sample.add(photons.sample())
         self._results._box_stage._ray_length = 100
         self._results._box_stage._ray_color = 0xff0000
         self._results._box_stage._box = [-lightbox_size/2, lightbox_size/2,
@@ -621,12 +647,12 @@ class Simulator:
         diffuser = Diffuser(g = np.float32(0.64), absorption = np.float32(0.16))
         diffuser.diffuse(photons)
 
-        self._results._diffuser_stage._photons_size = photons.size()
+        self._results._diffuser_stage._photons_size += photons.size()
         self.histogram(photons, self._results._diffuser_stage,
                        x_min = -lightbox_size/2, x_max = lightbox_size/2,
                        y_min = -lightbox_size/2, y_max = lightbox_size/2,
                        z_min = 0, z_max = 1000)
-        self._results._diffuser_stage._sample = PhotonsStacked(photons.sample())
+        self._results._diffuser_stage._sample.add(photons.sample())
         self._results._diffuser_stage._ray_length = 100
         self._results._diffuser_stage._ray_color = 0xff0000
         self._results._diffuser_stage._box = [-lightbox_size/2, lightbox_size/2,
@@ -645,13 +671,13 @@ class Simulator:
         # eliminate photons that miss the reflector
         prune_outliers(photons, size = reflector_size)
 
-        self._results._outbound_stage._photons_size = photons.size()
+        self._results._outbound_stage._photons_size += photons.size()
         self.histogram(photons, self._results._outbound_stage,
                        x_min = -reflector_size/2, x_max = reflector_size/2,
                        y_min = -reflector_size/2, y_max = reflector_size/2,
                        z_min = 0, z_max = reflector_distance,
                        theta_max=np.pi/100)  # a narrow beam
-        self._results._outbound_stage._sample = PhotonsStacked(photons.sample())
+        self._results._outbound_stage._sample.add(photons.sample())
         self._results._outbound_stage._ray_length = 100
         self._results._outbound_stage._ray_color = 0xff0000
         self._results._outbound_stage._box = [-reflector_size/2, reflector_size/2,
@@ -665,12 +691,12 @@ class Simulator:
         reflector = Diffuser(g = np.float32(-0.9925), absorption=np.float32(0.0))
         reflector.diffuse(photons)
 
-        self._results._inbound_stage._photons_size = photons.size()
+        self._results._inbound_stage._photons_size += photons.size()
         self.histogram(photons, self._results._inbound_stage,
                        x_min = -reflector_size/2, x_max = reflector_size/2,
                        y_min = -reflector_size/2, y_max = reflector_size/2,
                        z_min = 0, z_max = reflector_distance, theta_min = np.pi*90/100)
-        self._results._inbound_stage._sample = PhotonsStacked(photons.sample())
+        self._results._inbound_stage._sample.add(photons.sample())
         self._results._inbound_stage._ray_length = 100
         self._results._inbound_stage._ray_color = 0xff0000
         self._results._inbound_stage._box = [-reflector_size/2, reflector_size/2,
@@ -687,12 +713,12 @@ class Simulator:
         camera_neighborhood = 2000
         prune_outliers(photons, size = camera_neighborhood)
 
-        self._results._camera_plane_stage._photons_size = photons.size()
+        self._results._camera_plane_stage._photons_size += photons.size()
         self.histogram(photons, self._results._camera_plane_stage,
                        x_min = -camera_neighborhood/2, x_max = camera_neighborhood/2,
                        y_min = -camera_neighborhood/2, y_max = camera_neighborhood/2,
                        z_min = 0, z_max = camera_distance)
-        self._results._camera_plane_stage._sample = PhotonsStacked(photons.sample())
+        self._results._camera_plane_stage._sample.add(photons.sample())
         self._results._camera_plane_stage._ray_length = 100
         self._results._camera_plane_stage._ray_color = 0xff0000
         # note offset camera
