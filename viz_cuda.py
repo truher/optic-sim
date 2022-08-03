@@ -5,11 +5,12 @@ import matplotlib  # type: ignore
 import matplotlib.pyplot as plt  # type: ignore
 import k3d  # type:ignore
 import optics_cuda
-from stats_cuda import *
+import stats_cuda
+import simulation
 
 warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
 
-def plot_polar_histogram(data: optics_cuda.Histogram):
+def plot_polar_histogram(data: simulation.Histogram):
     fig = plt.figure(figsize=[15, 12])
     axes = plt.subplot(projection="polar")
     axes.set_theta_zero_location("N")
@@ -21,7 +22,7 @@ def plot_polar_histogram(data: optics_cuda.Histogram):
     axes.set_ylabel(data._ylabel)
     plt.show()
 
-def plot_histogram_data(data: optics_cuda.Histogram):
+def plot_histogram_data(data: simulation.Histogram):
     axes = plt.subplot()
     axes.plot((data._bin_edges[1:]+data._bin_edges[:-1])/2, data._hist, snap=False)
     axes.set_title(data._title)
