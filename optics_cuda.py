@@ -400,9 +400,19 @@ def propagate_to_camera(photons, location):
     photons.r_y = photons.r_y + distance_z * photons.ez_y / photons.ez_z
     photons.r_z = location_v
 
+class Histogram:
+    def __init__(self):
+        self._x = None
+        self._y = None
+
 class ResultStage:
     def __init__(self):
         self._photons_size = 0
+        self._histogram_r_x = Histogram()
+        self._histogram_r_y = Histogram()
+        self._histogram_r_z = Histogram()
+        self._histogram_ez_phi = Histogram()
+        self._histogram_ez_theta = Histogram()
 
 class SimulationResult:
     """Additive metrics produced from N waves of simulation."""
@@ -426,12 +436,121 @@ class Simulator:
         self._bundles = bundles
         self._bundle_size = bundle_size
 
+    @staticmethod
+    def one_histogram(bins, photon_batch_dimension1, photon_batch_dimension2,
+                      mapper, dim_min, dim_max, title, xlabel, ylabel, histogram_output):
+        size = photon_batch_dimension1.size  # ~35ns
+        threads_per_block = bins  # because the threads write back
+        grid_size = (int(math.ceil(size / threads_per_block)), 1, 1)
+        block_size = (threads_per_block, 1, 1)
+        h = cp.zeros(bins, dtype=np.int32)
+        histogram(
+            grid_size,
+            block_size,
+            (
+                photon_batch_dimension1,
+                photon_batch_dimension2,
+                np.int32(mapper),
+                h,
+                np.int32(size),
+                np.float32(dim_min),
+                np.float32((dim_max - dim_min) / bins),
+            ),
+        )
+        histogram_output._x = np.linspace(dim_min, dim_max, bins)
+        histogram_output._y = h.get()
+        histogram_output._title = title
+        histogram_output._xlabel = xlabel
+        histogram_output._ylabel = ylabel
+
+    def histogram(self, photon_batch, stage,
+        x_min: float,
+        x_max: float,
+        y_min: float,
+        y_max: float,
+        z_min: float,
+        z_max: float,
+        theta_min: float = 0,
+        theta_max: float = np.pi,
+        phi_min: float = -np.pi,
+        phi_max: float = np.pi):
+        """Make and store a set of histograms."""
+
+        null_vector = cp.empty(0, dtype=np.float32)
+        Simulator.one_histogram(128, 
+                photon_batch.r_x,
+                null_vector, 0, x_min, x_max, 
+                "photons per bucket by x",
+                "x dimension (TODO: unit)",
+                "photon count per bucket (TODO: density)",
+                stage._histogram_r_x)
+
+        Simulator.one_histogram(128, 
+                photon_batch.r_y,
+                null_vector, 0, y_min, y_max, 
+                "photons per bucket by y",
+                "y dimension (TODO: unit)",
+                "photon count per bucket (TODO: density)",
+                stage._histogram_r_y)
+
+        Simulator.one_histogram(128, 
+                photon_batch.r_z,
+                null_vector, 0, z_min, z_max, 
+                "photons per bucket by z",
+                "z dimension (TODO: unit)",
+                "photon count per bucket (TODO: density)",
+                stage._histogram_r_z)
+
+        Simulator.one_histogram(128, 
+                photon_batch.ez_y,
+                photon_batch.ez_x,
+                1, phi_min, phi_max, 
+                "photons per bucket by phi",
+                "azimuth phi (radians)",
+                "photon count per bucket (TODO: density)",
+                stage._histogram_ez_phi)
+
+        Simulator.one_histogram(128, 
+                photon_batch.ez_z,
+                null_vector,
+                2, theta_min, theta_max, 
+                "photons per bucket by theta",
+                "polar angle theta (radians)",
+                "photon count per bucket (TODO: density)",
+                stage._histogram_ez_theta)
+
+
+
+
+
+#        size = photon_batch.size()  # ~35ns
+#        bins = 128  # matches threads etc
+#        threads_per_block = bins  # because the threads write back
+#        grid_size = (int(math.ceil(size / threads_per_block)), 1, 1)
+#        block_size = (threads_per_block, 1, 1)
+#
+#        null_vector = cp.empty(0, dtype=np.float32)
+
+
+
+
+
+
+
+
+
     def run(self):
         """Run all the waves."""
         # first make some photons
         source_size = np.float32(10)
         photons = LambertianSource(source_size, source_size).make_photons(self._bundles)
         self._results._source_stage._photons_size = photons.size()
+        self.histogram(photons, self._results._source_stage,
+                       x_min = -source_size/2, x_max = source_size/2,
+                       y_min = -source_size/2, y_max = source_size/2,
+                       z_min = -5, z_max = 5, theta_max = np.pi/2)
+
+
         #print(f"LED emitted photons: {photons.size()}")
         #pass
 

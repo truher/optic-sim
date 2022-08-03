@@ -9,6 +9,13 @@ from stats_cuda import *
 
 warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
 
+def plot_histogram_data(data: optics_cuda.Histogram):
+    plt.plot(data._x, data._y, snap=False)
+    axes = plt.subplot()
+    axes.set_title(data._title)
+    axes.set_xlabel(data._xlabel)
+    axes.set_ylabel(data._ylabel)
+    plt.show()
 
 def plot_histogram_slices(
     photon_batch: optics_cuda.Photons,
@@ -135,6 +142,9 @@ def plot_histogram_slices(
     axes.set_title("photons per bucket by theta")
     axes.set_xlabel("polar angle (theta) (degrees)")
     axes.set_ylabel("photon count per bucket (TODO: density)")
+
+
+
 
     theta_range = theta_max - theta_min
     theta_bins_rad = theta_range * np.arange(bins) / bins + theta_min
