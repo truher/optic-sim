@@ -236,7 +236,7 @@ class LambertianSource(Source):
         self._width = width
         self._height = height
 
-    def make_photons(self, size) -> Photons:
+    def make_photons(self, size: np.int32) -> Photons:
         photons = Photons()
         photons.r_x = cp.random.uniform(
             -0.5 * self._width, 0.5 * self._width, size, dtype=np.float32
@@ -400,3 +400,42 @@ def propagate_to_camera(photons, location):
     photons.r_y = photons.r_y + distance_z * photons.ez_y / photons.ez_z
     photons.r_z = location_v
 
+class ResultStage:
+    def __init__(self):
+        self._photons_size = 0
+
+class SimulationResult:
+    """Additive metrics produced from N waves of simulation."""
+    def __init__(self):
+        self._source_stage = ResultStage()
+
+class Simulator:
+    """The specific geometry etc of this simulation.
+    Runs N waves of M photon bundles each.  Each bundle represents a set of photons,
+    each photon has a different wavelength (energy).
+    """
+    def __init__(self, results, waves, bundles, bundle_size):
+        """waves: number of full iterations to run
+           bundles: number of "Photons" groups (bundles) to run
+           bundle_size: photons per bundle, for accounting energy etc
+           I think this will all change, specifying something like emitter power or whatever
+           but here it is for now.
+        """
+        self._results = results
+        self._waves = waves
+        self._bundles = bundles
+        self._bundle_size = bundle_size
+
+    def run(self):
+        """Run all the waves."""
+        # first make some photons
+        source_size = np.float32(10)
+        photons = LambertianSource(source_size, source_size).make_photons(self._bundles)
+        self._results._source_stage._photons_size = photons.size()
+        #print(f"LED emitted photons: {photons.size()}")
+        #pass
+
+class Study:
+    """Sweep some parameters while measuring output."""
+    def __init__(self):
+        pass
