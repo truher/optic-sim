@@ -185,7 +185,7 @@ class Photons:
 
     def sample(self):
         """Take every N-th for plotting 1024.  Returns
-        a type the plotter likes, which is two (N,3) vectors"""
+        a type the plotter likes, which is two numpy (N,3) vectors"""
         size = self.size()  # ~35ns
         grid_size = 32
         block_size = 32
@@ -212,7 +212,7 @@ class Photons:
             ),
         )
 
-        return (p, d)
+        return (p.get(), d.get())
 
 
 class Source:
@@ -402,8 +402,14 @@ def propagate_to_camera(photons, location):
 
 class Histogram:
     def __init__(self):
-        self._x = None
-        self._y = None
+        self._hist = None
+        self._bin_edges = None
+
+class PhotonsStacked:
+    def __init__(self, stack):
+        (p, d) = stack
+        self._p = p
+        self._d = d
 
 class ResultStage:
     def __init__(self):
@@ -413,11 +419,21 @@ class ResultStage:
         self._histogram_r_z = Histogram()
         self._histogram_ez_phi = Histogram()
         self._histogram_ez_theta = Histogram()
+        self._histogram_ez_theta_weighted = Histogram()
+        self._sample = None
+        self._ray_length = None
+        self._ray_color = None
+        self._box = None
+        self._box_color = None
+        self._label = None
 
 class SimulationResult:
     """Additive metrics produced from N waves of simulation."""
     def __init__(self):
+        # photons as they emerge from the source
         self._source_stage = ResultStage()
+        # photons at the top of the light box
+        self._box_stage = ResultStage()
 
 class Simulator:
     """The specific geometry etc of this simulation.
@@ -457,8 +473,9 @@ class Simulator:
                 np.float32((dim_max - dim_min) / bins),
             ),
         )
-        histogram_output._x = np.linspace(dim_min, dim_max, bins)
-        histogram_output._y = h.get()
+        # TODO this is wrong, it is not edges, it is not lower edges, it is just wrong
+        histogram_output._bin_edges = np.linspace(dim_min, dim_max, bins + 1)
+        histogram_output._hist = h.get()
         histogram_output._title = title
         histogram_output._xlabel = xlabel
         histogram_output._ylabel = ylabel
@@ -519,6 +536,16 @@ class Simulator:
                 "photon count per bucket (TODO: density)",
                 stage._histogram_ez_theta)
 
+        # TODO: maybe move this somewhere else
+        h = stage._histogram_ez_theta._hist
+        b = stage._histogram_ez_theta._bin_edges
+        area = np.cos(b[:-1]) - np.cos(b[1:])
+        stage._histogram_ez_theta_weighted._hist = h / area
+        stage._histogram_ez_theta_weighted._bin_edges = b
+        stage._histogram_ez_theta_weighted._title = "radiant intensity by theta by bucket area"
+        stage._histogram_ez_theta_weighted._xlabel = "polar angle theta (radians)"
+        stage._histogram_ez_theta_weighted._ylabel = "photon count per ... ? (TODO: sr)"
+
 
 
 
@@ -541,18 +568,45 @@ class Simulator:
 
     def run(self):
         """Run all the waves."""
-        # first make some photons
+        # make some photons
+
         source_size = np.float32(10)
-        photons = LambertianSource(source_size, source_size).make_photons(self._bundles)
+        source = LambertianSource(source_size, source_size)
+        photons = source.make_photons(self._bundles)
+
         self._results._source_stage._photons_size = photons.size()
         self.histogram(photons, self._results._source_stage,
                        x_min = -source_size/2, x_max = source_size/2,
                        y_min = -source_size/2, y_max = source_size/2,
                        z_min = -5, z_max = 5, theta_max = np.pi/2)
 
+        self._results._source_stage._sample = PhotonsStacked(photons.sample())
+        self._results._source_stage._ray_length = 1
+        self._results._source_stage._ray_color = 0xffff00
+        self._results._source_stage._box = [-source_size/2, source_size/2, -source_size/2, source_size/2, 0]
+        self._results._source_stage._box_color = 0xff0000
+        self._results._source_stage._label = "Source"
 
-        #print(f"LED emitted photons: {photons.size()}")
-        #pass
+        # propagate them through the reflective light box
+
+        lightbox_height = 400
+        lightbox_size = 400
+        lightbox = Lightbox(height = lightbox_height, size = lightbox_size)
+        lightbox.propagate(photons)
+
+        self._results._box_stage._photons_size = photons.size()
+        self.histogram(photons, self._results._box_stage,
+                       x_min = -lightbox_size/2, x_max = lightbox_size/2,
+                       y_min = -lightbox_size/2, y_max = lightbox_size/2,
+                       z_min = 0, z_max = 1000, theta_max = np.pi/2)
+        self._results._box_stage._sample = PhotonsStacked(photons.sample())
+        self._results._box_stage._ray_length = 100
+        self._results._box_stage._ray_color = 0xffff00
+        self._results._box_stage._box = [-lightbox_size/2, lightbox_size/2,
+                                         -lightbox_size/2, lightbox_size/2, lightbox_height]
+        self._results._box_stage._box_color = 0xff0000
+        self._results._box_stage._label = "Lightbox"
+
 
 class Study:
     """Sweep some parameters while measuring output."""

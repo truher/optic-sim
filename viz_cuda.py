@@ -9,13 +9,34 @@ from stats_cuda import *
 
 warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
 
-def plot_histogram_data(data: optics_cuda.Histogram):
-    plt.plot(data._x, data._y, snap=False)
-    axes = plt.subplot()
+def plot_polar_histogram(data: optics_cuda.Histogram):
+    fig = plt.figure(figsize=[15, 12])
+    axes = plt.subplot(projection="polar")
+    axes.set_theta_zero_location("N")
+    # mirror the data so it looks nice
+    axes.plot((data._bin_edges[1:]+data._bin_edges[:-1])/2, data._hist, color="blue", snap=False)
+    axes.plot(-(data._bin_edges[1:]+data._bin_edges[:-1])/2, data._hist, color="blue", snap=False)
     axes.set_title(data._title)
     axes.set_xlabel(data._xlabel)
     axes.set_ylabel(data._ylabel)
     plt.show()
+
+def plot_histogram_data(data: optics_cuda.Histogram):
+    axes = plt.subplot()
+    axes.plot((data._bin_edges[1:]+data._bin_edges[:-1])/2, data._hist, snap=False)
+    axes.set_title(data._title)
+    axes.set_xlabel(data._xlabel)
+    axes.set_ylabel(data._ylabel)
+    plt.show()
+
+def plot_all_histograms(stage):
+    plot_histogram_data(stage._histogram_r_x)
+    plot_histogram_data(stage._histogram_r_y)
+    plot_histogram_data(stage._histogram_r_z)
+    plot_histogram_data(stage._histogram_ez_phi)
+    plot_histogram_data(stage._histogram_ez_theta)
+    plot_histogram_data(stage._histogram_ez_theta_weighted)
+    plot_polar_histogram(stage._histogram_ez_theta_weighted)
 
 def plot_histogram_slices(
     photon_batch: optics_cuda.Photons,
@@ -143,9 +164,6 @@ def plot_histogram_slices(
     axes.set_xlabel("polar angle (theta) (degrees)")
     axes.set_ylabel("photon count per bucket (TODO: density)")
 
-
-
-
     theta_range = theta_max - theta_min
     theta_bins_rad = theta_range * np.arange(bins) / bins + theta_min
     theta_bin_width_rad = theta_range / bins
@@ -171,6 +189,9 @@ def plot_histogram_slices(
     axes.set_xlabel("polar angle (theta) (degrees)")
     axes.set_ylabel("photon count per ... ? (TODO: sr)")
 
+
+
+
     fig = plt.figure(figsize=[15, 12])
     axes = plt.subplot(projection="polar")
     axes.set_theta_zero_location("N")
@@ -183,12 +204,29 @@ def plot_histogram_slices(
     axes.set_ylabel("photon count per ... ? (TODO: sr)")
 
 
+def plot_stage_3d(stage):
+    plot = k3d.plot()
+    plot += k3d.vectors(stage._sample._p,
+                        stage._sample._d * stage._ray_length,
+                        color=stage._ray_color)
+    xmin = stage._box[0]
+    xmax = stage._box[1]
+    ymin = stage._box[2]
+    ymax = stage._box[3]
+    z = stage._box[4]
+    plot += k3d.mesh([[xmin, ymin, z], [xmax, ymin, z], [xmax, ymax, z], [xmin, ymax, z]],
+                     [[0, 1, 2], [2, 3, 0]],
+                     opacity=0.6, color=stage._box_color, side="both")
+    plot += k3d.label(stage._label, position=(xmax, ymax, z), label_box=False)
+    plot.display()
+
+
 def plot_3d(bundles, ray_lengths, boxes, labels, colors):
     plot = k3d.plot()
     for ridx, bundle in enumerate(bundles):
         (p, d) = bundle
         ray_length = ray_lengths[ridx]
-        plot += k3d.vectors(p.get(), d.get() * ray_length)
+        plot += k3d.vectors(p, d * ray_length)
 
     for ridx, box in enumerate(boxes):
         xmin = box[0]
