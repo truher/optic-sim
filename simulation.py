@@ -46,6 +46,7 @@ class ResultStage:
         self._histogram_ez_phi = Histogram()
         self._histogram_ez_theta = Histogram()
         self._histogram_ez_theta_weighted = Histogram()
+        self._histogram_ez_theta_radiance = Histogram()
         self._sample = PhotonsStacked()
         self._ray_length = None
         self._ray_color = None
@@ -90,7 +91,7 @@ class Simulator:
     def one_histogram(bins, photon_batch_wavelength_nm,
                       photon_batch_dimension1, photon_batch_dimension2,
                       mapper, photons_per_bundle,
-                      dim_min, dim_max, title, xlabel, ylabel, bin_area_m2, duration_s,
+                      dim_min, dim_max, title, xlabel, ylabel, bin_area, duration_s,
                       histogram_output):
         size = photon_batch_dimension1.size  # ~35ns
         threads_per_block = bins  # because the threads write back
@@ -112,10 +113,9 @@ class Simulator:
                 np.int32(photons_per_bundle)
             ),
         )
-        # TODO this is wrong, it is not edges, it is not lower edges, it is just wrong
         histogram_output._bin_edges = np.linspace(dim_min, dim_max, bins + 1)
         #histogram_output._hist = h.get()
-        histogram_output.add(h.get()/(bin_area_m2 * duration_s))
+        histogram_output.add(h.get()/(bin_area * duration_s))
         histogram_output._title = title
         histogram_output._xlabel = xlabel
         histogram_output._ylabel = ylabel
@@ -136,27 +136,27 @@ class Simulator:
 
         bins = 128
         null_vector = cp.empty(0, dtype=np.float32)
-        bin_area = (y_max - y_min) * (x_max - x_min) / bins
+
+        # for an areal histogram, measure radiosity, power per area, w/m^2
+        bin_area_m2 = (y_max - y_min) * (x_max - x_min) / bins
         Simulator.one_histogram(bins, 
                 photon_batch.wavelength_nm,
                 photon_batch.r_x,
                 null_vector, 0, photon_batch.photons_per_bundle, x_min, x_max, 
-                "Radiosity (w/m^2) by X (m^2)",
+                "Radiosity (W/m^2) by X (m^2)",
                 "X dimension (m^2)",
-                "Radiosity (w/m^2)",
-                bin_area, photon_batch.duration_s,
+                "Radiosity (W/m^2)",
+                bin_area_m2, photon_batch.duration_s,
                 stage._histogram_r_x)
-
-        # so now histogram_r_x is joules per bucket.
 
         Simulator.one_histogram(bins, 
                 photon_batch.wavelength_nm,
                 photon_batch.r_y,
                 null_vector, 0, photon_batch.photons_per_bundle, y_min, y_max, 
-                "Radiosity (w/m2) by Y (m^2)",
+                "Radiosity (W/m2) by Y (m^2)",
                 "Y dimension (m^2))",
-                "Radiosity (w/m^2)",
-                bin_area, # happens to be same as above
+                "Radiosity (W/m^2)",
+                bin_area_m2, # happens to be same as above
                 photon_batch.duration_s,
                 stage._histogram_r_y)
 
@@ -173,19 +173,24 @@ class Simulator:
                 stage._histogram_r_z)
 
         # START HERE
-
+        # for an angular histogram we're measuring
+        # radiant intensity, power per solid angle, w/sr
+        bin_area_sr = 4 * np.pi / bins
+        # note that the radiant intensity varies a lot by *theta* i.e. not the
+        # quantity bucketed here (see below)
         Simulator.one_histogram(bins, 
                 photon_batch.wavelength_nm,
                 photon_batch.ez_y,
                 photon_batch.ez_x,
                 1, photon_batch.photons_per_bundle, phi_min, phi_max, 
-                "photons per bucket by phi",
-                "azimuth phi (radians)",
-                "photon count per bucket (TODO: density)",
-                1,
+                "Radiant Intensity (W/sr) by azimuth phi (radians)",
+                "Azimuth phi (radians)",
+                "Radiant Intensity (W/sr)",
+                bin_area_sr,
                 photon_batch.duration_s,
                 stage._histogram_ez_phi)
 
+        # this isn't very useful, maybe remove it.
         Simulator.one_histogram(bins, 
                 photon_batch.wavelength_nm,
                 photon_batch.ez_z,
@@ -198,15 +203,51 @@ class Simulator:
                 photon_batch.duration_s,
                 stage._histogram_ez_theta)
 
-        # TODO: maybe move this somewhere else
-        h = stage._histogram_ez_theta._hist
-        b = stage._histogram_ez_theta._bin_edges
-        bin_area = np.cos(b[:-1]) - np.cos(b[1:])
-        stage._histogram_ez_theta_weighted._hist = h / bin_area
-        stage._histogram_ez_theta_weighted._bin_edges = b
-        stage._histogram_ez_theta_weighted._title = "radiant intensity by theta by bin area"
-        stage._histogram_ez_theta_weighted._xlabel = "polar angle theta (radians)"
-        stage._histogram_ez_theta_weighted._ylabel = "photon count per ... ? (TODO: sr)"
+        bin_edges = np.linspace(theta_min, theta_max, bins + 1)
+        bin_area_sr = (np.cos(bin_edges[:-1]) - np.cos(bin_edges[1:]) ) * 2 * np.pi
+        Simulator.one_histogram(bins, 
+                photon_batch.wavelength_nm,
+                photon_batch.ez_z,
+                null_vector,
+                2, photon_batch.photons_per_bundle, theta_min, theta_max, 
+                "Radiant Intensity (W/sr) per polar angle theta (radians)",
+                "Polar angle theta (radians)",
+                "Radiant Intensity (W/sr)",
+                bin_area_sr,
+                photon_batch.duration_s,
+                stage._histogram_ez_theta_weighted)
+
+
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        projected_area_m2 =  (y_max - y_min) * (x_max - x_min)  * np.cos(bin_centers)
+        bin_area_sr_m2 = (np.cos(bin_edges[:-1]) - np.cos(bin_edges[1:]) ) * 2 * np.pi * projected_area_m2
+        Simulator.one_histogram(bins, 
+                photon_batch.wavelength_nm,
+                photon_batch.ez_z,
+                null_vector,
+                2, photon_batch.photons_per_bundle, theta_min, theta_max, 
+                "Radiance (W/sr/m2) per polar angle theta (radians)",
+                "Polar angle theta (radians)",
+                "Radiance (W/sr/m2)",
+                bin_area_sr_m2,
+                photon_batch.duration_s,
+                stage._histogram_ez_theta_radiance)
+
+
+
+
+
+
+
+#        # TODO: maybe move this somewhere else
+#        h = stage._histogram_ez_theta._hist
+#        b = stage._histogram_ez_theta._bin_edges
+#        bin_area = np.cos(b[:-1]) - np.cos(b[1:])
+#        stage._histogram_ez_theta_weighted._hist = h / bin_area
+#        stage._histogram_ez_theta_weighted._bin_edges = b
+#        stage._histogram_ez_theta_weighted._title = "radiant intensity by theta by bin area"
+#        stage._histogram_ez_theta_weighted._xlabel = "polar angle theta (radians)"
+#        stage._histogram_ez_theta_weighted._ylabel = "photon count per ... ? (TODO: sr)"
 
 
     def run_all_waves(self):
