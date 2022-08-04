@@ -149,7 +149,7 @@ class Photons:
         self.ez_z = None
         self.alive = None
         self.wavelength_nm = None # [int16]
-        self.photons_per_bundle = 0 # should be like 1e9 ish?
+        self.photons_per_bundle = 0 # should be like 1e7 ish?
         self.duration_s = 0 # for computing power
 
     def size(self):
