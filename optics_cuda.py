@@ -3,6 +3,7 @@ import cupy as cp  # type: ignore
 from cupyx import jit  # type: ignore
 import math
 import numpy as np
+import scipy.constants
 import stats_cuda
 
 
@@ -147,6 +148,9 @@ class Photons:
         self.ez_y = None
         self.ez_z = None
         self.alive = None
+        self.wavelength_nm = None # [int16]
+        self.photons_per_bundle = 0 # should be like 1e9 ish?
+        self.duration_s = 0 # for computing power
 
     def size(self):
         return np.int32(self.r_x.size)
@@ -176,9 +180,6 @@ class Photons:
         cp.logical_and(self.alive, self.r_y >= -size/2, out=self.alive)
         cp.logical_and(self.alive, self.r_y <= size/2, out=self.alive)
         self.prune()
-
-
-
 
     def sample(self):
         """Take every N-th for plotting 1024.  Returns
@@ -211,9 +212,31 @@ class Photons:
 
         return (p.get(), d.get())
 
+    @staticmethod
+    @cp.fuse()
+    def energy_j_kernel(wavelength_nm, photons_per_bundle):
+        wavelength_m = wavelength_nm * 1e-9
+        frequency_hz = scipy.constants.c / wavelength_m
+        energy_per_photon_j = scipy.constants.h * frequency_hz
+        return cp.sum(energy_per_photon_j * photons_per_bundle)
+    
+
+    def energy_j(self) -> float:
+        """Energy of this photon bundle."""
+        print(self.wavelength_nm)
+        print(self.photons_per_bundle)
+        return Photons.energy_j_kernel(self.wavelength_nm, self.photons_per_bundle)
+#        wavelength_m = self.wavelength_nm * 1e-9
+#        frequency_hz = scipy.constants.c / wavelength_m
+#        energy_per_photon_j = scipy.constants.h * frequency_hz
+#        energy_per_bundle_j = energy_per_photon_j * self.photons_per_bundle
+
+    def power_w(self) -> float:
+        return self.energy_j() / self.duration_s
+
 
 class Source:
-    def make_photons(self, size: np.int32) -> Photons:
+    def make_photons(self, bundles: np.int32) -> Photons:
         raise NotImplementedError()
 
 
@@ -228,32 +251,38 @@ def spherical_to_cartesian_raw(theta_z, phi_x, y, size) -> None:
         theta_z[i] = cp.cos(theta_z[i])
 
 
-class LambertianSource(Source):
-    def __init__(self, width: float, height: float):
-        self._width = width
-        self._height = height
+class MonochromaticLambertianSource(Source):
+    def __init__(self, width_m: float, height_m: float,
+                 wavelength_nm: int, photons_per_bundle: float,
+                 duration_s: float):
+        self._width_m = width_m
+        self._height_m = height_m
+        self._wavelength_nm = wavelength_nm
+        self._photons_per_bundle = photons_per_bundle
+        self._duration_s = duration_s
 
-    def make_photons(self, size: np.int32) -> Photons:
+    def make_photons(self, bundles: np.int32) -> Photons:
         photons = Photons()
         photons.r_x = cp.random.uniform(
-            -0.5 * self._width, 0.5 * self._width, size, dtype=np.float32
+            -0.5 * self._width_m, 0.5 * self._width_m, bundles, dtype=np.float32
         )
         photons.r_y = cp.random.uniform(
-            -0.5 * self._height, 0.5 * self._height, size, dtype=np.float32
+            -0.5 * self._height_m, 0.5 * self._height_m, bundles, dtype=np.float32
         )
-        photons.r_z = cp.full(size, 0.0, dtype=np.float32)
+        photons.r_z = cp.full(bundles, 0.0, dtype=np.float32)
         # phi, reused as x
-        photons.ez_x = cp.random.uniform(0, 2 * np.pi, size, dtype=np.float32)
-        photons.ez_y = cp.empty(size, dtype=np.float32)
+        photons.ez_x = cp.random.uniform(0, 2 * np.pi, bundles, dtype=np.float32)
+        photons.ez_y = cp.empty(bundles, dtype=np.float32)
         # theta, reused as z
-        photons.ez_z = cp.arccos(cp.random.uniform(-1, 1, size, dtype=np.float32)) / 2
+        photons.ez_z = cp.arccos(cp.random.uniform(-1, 1, bundles, dtype=np.float32)) / 2
         spherical_to_cartesian_raw(
-            (128,), (1024,), (photons.ez_z, photons.ez_x, photons.ez_y, size)
+            (128,), (1024,), (photons.ez_z, photons.ez_x, photons.ez_y, bundles)
         )
-        photons.alive = cp.ones(size, dtype=bool)
+        photons.alive = cp.ones(bundles, dtype=bool)
+        photons.wavelength_nm = cp.full(bundles, self._wavelength_nm, dtype=np.uint16)
+        photons.photons_per_bundle = self._photons_per_bundle
+        photons.duration_s = self._duration_s
         return photons
-
-
 
 
 class Lightbox:
@@ -363,11 +392,20 @@ class Diffuser:
         theta = get_scattering_theta(self._g, size)
         block_size = 1024 # max
         grid_size = int(math.ceil(size/block_size))
-        scatter((grid_size,), (block_size,), (photons.ez_x, photons.ez_y, photons.ez_z, theta, phi, size))
+        scatter((grid_size,), (block_size,),
+                (photons.ez_x, photons.ez_y, photons.ez_z, theta, phi, size))
 
 
-def propagate_to_reflector(photons, location, size):
-    """ size: reflector size """
+class ColorFilter:
+    """ transmits some of the photons depending on their wavelength."""
+    def __init__(self):
+        pass
+
+    def transfer(self, photons: Photons) -> None:
+        pass
+
+
+def propagate_to_reflector(photons, location):
     # TODO: make a raw kernel for this whole function
     # first get rid of the ones not heading that way
     photons.alive = photons.ez_z > 0

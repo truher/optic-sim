@@ -15,8 +15,10 @@ def plot_polar_histogram(data: simulation.Histogram):
     axes = plt.subplot(projection="polar")
     axes.set_theta_zero_location("N")
     # mirror the data so it looks nice
-    axes.plot((data._bin_edges[1:]+data._bin_edges[:-1])/2, data._hist, color="blue", snap=False)
-    axes.plot(-(data._bin_edges[1:]+data._bin_edges[:-1])/2, data._hist, color="blue", snap=False)
+    axes.plot((data._bin_edges[1:]+data._bin_edges[:-1])/2,
+              data._hist, color="blue", snap=False)
+    axes.plot(-(data._bin_edges[1:]+data._bin_edges[:-1])/2,
+              data._hist, color="blue", snap=False)
     axes.set_title(data._title)
     axes.set_xlabel(data._xlabel)
     axes.set_ylabel(data._ylabel)
