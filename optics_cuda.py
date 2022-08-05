@@ -155,43 +155,52 @@ class Photons:
     def size(self):
         return np.int32(self.r_x.size)
 
+    def count_alive(self):
+        return cp.count_nonzero(self.alive)
+
     def decimate(self, p):
         """Remove photons with probability p."""
         # TODO: do this without allocating a giant vector
         if p < 0.001:
             return
-        self.alive = cp.random.random(self.size()) > p
-        self.prune()
+#        self.alive = cp.random.random(self.size()) > p
+        cp.logical_and(self.alive, cp.random.random(self.size()) > p, out=self.alive)
+#        self.prune()
 
-    def prune(self):
-        """ remove dead photons """
-        self.r_x = cp.compress(self.alive, self.r_x)
-        self.r_y = cp.compress(self.alive, self.r_y)
-        self.r_z = cp.compress(self.alive, self.r_z)
-        self.ez_x = cp.compress(self.alive, self.ez_x)
-        self.ez_y = cp.compress(self.alive, self.ez_y)
-        self.ez_z = cp.compress(self.alive, self.ez_z)
-        self.alive = cp.compress(self.alive, self.alive)
+#    def prune(self):
+#        """ remove dead photons """
+#        self.r_x = cp.compress(self.alive, self.r_x)
+#        self.r_y = cp.compress(self.alive, self.r_y)
+#        self.r_z = cp.compress(self.alive, self.r_z)
+#        self.ez_x = cp.compress(self.alive, self.ez_x)
+#        self.ez_y = cp.compress(self.alive, self.ez_y)
+#        self.ez_z = cp.compress(self.alive, self.ez_z)
+#        self.alive = cp.compress(self.alive, self.alive)
 
     def prune_outliers(self, size):
-        """ remove out-of-bounds photons """
+        """ set out-of-bounds photons to dead """
         cp.logical_and(self.alive, self.r_x >= -size/2, out=self.alive)
         cp.logical_and(self.alive, self.r_x <= size/2, out=self.alive)
         cp.logical_and(self.alive, self.r_y >= -size/2, out=self.alive)
         cp.logical_and(self.alive, self.r_y <= size/2, out=self.alive)
-        self.prune()
+#        self.prune()
 
     def sample(self):
         """Take every N-th for plotting 1024.  Returns
         a type the plotter likes, which is two numpy (N,3) vectors"""
         size = self.size()  # ~35ns
-        grid_size = 32
+        alive_count = self.count_alive()
+        alive_ratio = alive_count / size
         block_size = 32
+        # choose extra to compensate for deadness
+        # allow approximate return count
+        grid_size = int(math.ceil(32 / alive_ratio))
         selection_size = min(size, grid_size * block_size)
         scale = np.int32(size // selection_size)
 
         p = cp.zeros((selection_size, 3), dtype=np.float32)
         d = cp.zeros((selection_size, 3), dtype=np.float32)
+        oalive = cp.zeros(selection_size, dtype=bool)
 
         stats_cuda.select_and_stack(
             (grid_size,),
@@ -203,12 +212,17 @@ class Photons:
                 self.ez_x,
                 self.ez_y,
                 self.ez_z,
+                self.alive,
                 p,
                 d,
+                oalive,
                 selection_size,
                 scale
             ),
         )
+
+        p = cp.compress(oalive, p, axis=0)
+        d = cp.compress(oalive, d, axis=0)
 
         return (p.get(), d.get())
 
@@ -218,18 +232,15 @@ class Photons:
         wavelength_m = wavelength_nm * 1e-9
         frequency_hz = scipy.constants.c / wavelength_m
         energy_per_photon_j = scipy.constants.h * frequency_hz
-        return cp.sum(energy_per_photon_j * photons_per_bundle)
+        energy_per_bundle_j = energy_per_photon_j * photons_per_bundle
+        return cp.sum(energy_per_bundle_j)
     
 
     def energy_j(self) -> float:
         """Energy of this photon bundle."""
-        print(self.wavelength_nm)
-        print(self.photons_per_bundle)
+        #print(self.wavelength_nm)
+        #print(self.photons_per_bundle)
         return Photons.energy_j_kernel(self.wavelength_nm, self.photons_per_bundle)
-#        wavelength_m = self.wavelength_nm * 1e-9
-#        frequency_hz = scipy.constants.c / wavelength_m
-#        energy_per_photon_j = scipy.constants.h * frequency_hz
-#        energy_per_bundle_j = energy_per_photon_j * self.photons_per_bundle
 
     def power_w(self) -> float:
         return self.energy_j() / self.duration_s
@@ -312,39 +323,55 @@ class Lightbox:
         curand_init(seed, idx, 0, &state);""",
         operation = """
         if (!alive) continue;
+//#// do nothing
+//#return;
         if (ez_z < 0) {
             alive = false;
             continue;
         }
-        r_x = r_x + height * ez_x / ez_z;
-        r_y = r_y + height * ez_y / ez_z;
-        r_z = height;
+        register float r_x_tmp = r_x + height * ez_x / ez_z;
+        register float r_y_tmp = r_y + height * ez_y / ez_z;
+        register float ez_x_tmp = ez_x;
+        register float ez_y_tmp = ez_y;
         
         bool done_reflecting = false;
         while (!done_reflecting) {
-            if (r_x < -size / 2) {
-                r_x = -size - r_x;
-                ez_x *= -1;
-                // er_x *= -1; // no more persistent perpendicular
+            if (r_x_tmp < -size / 2) {
+                r_x_tmp = -size - r_x_tmp;
+                ez_x_tmp *= -1;
+                // er_x_tmp *= -1; // no more persistent perpendicular
+//#                if (curand_uniform(&state) < absorption) break;
                 if (curand_uniform(&state) < absorption) break;
-            } else if (r_x > size / 2) {
-                r_x = size - r_x;
-                ez_x *= -1;
-                // er_x *= -1;
+            } else if (r_x_tmp > size / 2) {
+                r_x_tmp = size - r_x_tmp;
+                ez_x_tmp *= -1;
+                // er_x_tmp *= -1;
+//#                if (curand_uniform(&state) < absorption) break;
                 if (curand_uniform(&state) < absorption) break;
-            } else if (r_y < -size / 2) {
-                r_y = -size - r_y;
-                ez_y *= -1;
-                // er_y *= -1;
+            } else if (r_y_tmp < -size / 2) {
+                r_y_tmp = -size - r_y_tmp;
+                ez_y_tmp *= -1;
+                // er_y_tmp *= -1;
+//#                if (curand_uniform(&state) < absorption) break;
                 if (curand_uniform(&state) < absorption) break;
-            } else if (r_y > size / 2) {
-                r_y = size - r_y;
-                ez_y *= -1;
-                // er_y *= -1;
+            } else if (r_y_tmp > size / 2) {
+                r_y_tmp = size - r_y_tmp;
+                ez_y_tmp *= -1;
+                // er_y_tmp *= -1;
+//#                if (curand_uniform(&state) < absorption) break;
                 if (curand_uniform(&state) < absorption) break;
             }
-            if (r_x >= -size / 2 && r_x <= size / 2 && r_y >= -size / 2 && r_y <= size / 2)
+//#// just reflect one time to see how long it takes
+//#            if (r_x_tmp >= -size / 2 && r_x_tmp <= size / 2
+            if (r_x_tmp >= -size / 2 && r_x_tmp <= size / 2
+//#             && r_y_tmp >= -size / 2 && r_y_tmp <= size / 2)
+             && r_y_tmp >= -size / 2 && r_y_tmp <= size / 2)
                 done_reflecting = true;
+                r_x = r_x_tmp;
+                r_y = r_y_tmp;
+                r_z = height;
+                ez_x = ez_x_tmp;
+                ez_y = ez_y_tmp;
         }
         if (!done_reflecting) {
             alive = false;
@@ -363,8 +390,9 @@ class Lightbox:
                                    photons.r_x, photons.r_y, photons.r_z,
                                    photons.ez_x, photons.ez_y, photons.ez_z,
                                    photons.alive,
-                                   block_size = 32) # smaller block = less tail latency?  .. nope.
-        photons.prune() # remove the absorbed photons
+                                   block_size = 1024) # smaller block = less tail latency?  .. nope.
+        cp.cuda.Device().synchronize()
+#        photons.prune() # remove the absorbed photons
 
 
 class Diffuser:
@@ -408,8 +436,8 @@ class ColorFilter:
 def propagate_to_reflector(photons, location):
     # TODO: make a raw kernel for this whole function
     # first get rid of the ones not heading that way
-    photons.alive = photons.ez_z > 0
-    photons.prune()
+    cp.logical_and(photons.alive, photons.ez_z > 0, out=photons.alive)
+#    photons.prune()
 
     location_v = cp.full(photons.size(), location, dtype=np.float32)
     distance_z = location_v - photons.r_z
@@ -419,8 +447,8 @@ def propagate_to_reflector(photons, location):
 
 def propagate_to_camera(photons, location):
     # prune photons heading the wrong way
-    photons.alive = photons.ez_z < 0
-    photons.prune()
+    cp.logical_and(photons.alive, photons.ez_z < 0, out=photons.alive)
+#    photons.prune()
 
     location_v = cp.full(photons.size(), location, dtype=np.float32)
     distance_z = location_v - photons.r_z
