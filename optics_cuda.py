@@ -99,7 +99,7 @@ def do_rotation(
         + (uz * uy * one_cost + ux * sint) * Y
         + (cost + uz * uz * one_cost) * Z
     )
-    cp.cuda.Device().synchronize()
+#    cp.cuda.Device().synchronize()
  
     return (x, y, z)
 
@@ -124,7 +124,7 @@ def scatter(
         (ux, uy, uz) = do_rotation(ux, uy, uz, vx[i], vy[i], vz[i], phi[i])
         # then rotate the photon around that perpendicular
         (vx[i], vy[i], vz[i]) = do_rotation(vx[i], vy[i], vz[i], ux, uy, uz, theta[i])
-    cp.cuda.Device().synchronize()
+#    cp.cuda.Device().synchronize()
 
 
 def get_phi(y: cp.ndarray, x: cp.ndarray) -> cp.ndarray:
@@ -185,8 +185,26 @@ class Photons:
         cp.logical_and(self.alive, self.r_x <= size/2, out=self.alive)
         cp.logical_and(self.alive, self.r_y >= -size/2, out=self.alive)
         cp.logical_and(self.alive, self.r_y <= size/2, out=self.alive)
-        cp.cuda.Device().synchronize()
+#        cp.cuda.Device().synchronize()
 #        self.prune()
+
+    @staticmethod
+    def compress_dead(alive, x):
+        y = cp.compress(alive, x, axis=0)
+#        cp.cuda.Device().synchronize()
+        return y
+
+    def debug(self):
+        return
+        energy_j = self.energy_j()
+        print(f"photon batch energy joules: {energy_j:.3e}")
+        power_w = self.power_w()
+        print(f"photon batch power watts: {power_w:.3e}")
+        emitter_area_m2 = source_size_m * source_size_m
+        print(f"emitter area m^2: {emitter_area_m2:.3e}")
+        radiosity_w_m2 = power_w / emitter_area_m2
+        print(f"batch radiosity w/m^2: {radiosity_w_m2:.3e}")
+
 
     def sample(self):
         """Take every N-th for plotting 1024.  Returns
@@ -194,16 +212,25 @@ class Photons:
         size = self.size()  # ~35ns
         alive_count = self.count_alive()
         alive_ratio = alive_count / size
-        block_size = 32
+#        block_size = 32 # 0.47
+        block_size = 64 # 0.45
+#        block_size = 128 # 0.44
+#        block_size = 256 # 1.7?
         # choose extra to compensate for deadness
         # allow approximate return count
-        grid_size = int(math.ceil(32 / alive_ratio))
+#        grid_size = int(math.ceil(32 / alive_ratio))
+        grid_size = int(math.ceil(16 / alive_ratio))
+#        grid_size = int(math.ceil(8 / alive_ratio))
+#        grid_size = int(math.ceil(4 / alive_ratio))
         selection_size = min(size, grid_size * block_size)
         scale = np.int32(size // selection_size)
 
-        p = cp.zeros((selection_size, 3), dtype=np.float32)
-        d = cp.zeros((selection_size, 3), dtype=np.float32)
-        oalive = cp.zeros(selection_size, dtype=bool)
+        #mempool = cp.get_default_memory_pool()
+        #mempool.free_all_blocks()
+
+        position_3d = cp.zeros((selection_size, 3), dtype=np.float32)
+        direction_3d = cp.zeros((selection_size, 3), dtype=np.float32)
+        alive_selected = cp.zeros(selection_size, dtype=bool)
 
         stats_cuda.select_and_stack(
             (grid_size,),
@@ -216,19 +243,22 @@ class Photons:
                 self.ez_y,
                 self.ez_z,
                 self.alive,
-                p,
-                d,
-                oalive,
+                position_3d,
+                direction_3d,
+                alive_selected,
                 selection_size,
                 scale
             ),
         )
 
-        p = cp.compress(oalive, p, axis=0)
-        d = cp.compress(oalive, d, axis=0)
+#        cp.cuda.Device().synchronize()
 
-        cp.cuda.Device().synchronize()
-        return (p.get(), d.get())
+        position_3d = Photons.compress_dead(alive_selected, position_3d)
+        direction_3d = Photons.compress_dead(alive_selected, direction_3d)
+
+#        cp.cuda.Device().synchronize()
+        return (position_3d.get(), direction_3d.get())
+#        return (position_3d, direction_3d)
 
     @staticmethod
     @cp.fuse()
@@ -297,7 +327,7 @@ class MonochromaticLambertianSource(Source):
         photons.wavelength_nm = cp.full(bundles, self._wavelength_nm, dtype=np.uint16)
         photons.photons_per_bundle = self._photons_per_bundle
         photons.duration_s = self._duration_s
-        cp.cuda.Device().synchronize()
+#        cp.cuda.Device().synchronize()
         return photons
 
 
@@ -410,7 +440,7 @@ class Lightbox:
                             cp.logical_and(
                                 cp.less(cp.random.random(photons.size()), photon_survival),
                                 cp.greater(photons.ez_z, 0)), out=photons.alive)
-        cp.cuda.Device().synchronize()
+#        cp.cuda.Device().synchronize()
         
 
     def propagate(self, photons: Photons) -> None:
@@ -425,7 +455,7 @@ class Lightbox:
                                    photons.ez_x, photons.ez_y, photons.ez_z,
                                    photons.alive,
                                    block_size = 1024) # smaller block = less tail latency?  .. nope.
-        cp.cuda.Device().synchronize()
+#        cp.cuda.Device().synchronize()
 #        photons.prune() # remove the absorbed photons
 
 
@@ -462,7 +492,7 @@ class Diffuser:
         grid_size = int(math.ceil(size/block_size))
         scatter((grid_size,), (block_size,),
                 (photons.ez_x, photons.ez_y, photons.ez_z, theta, phi, size))
-        cp.cuda.Device().synchronize()
+#        cp.cuda.Device().synchronize()
 
 class ColorFilter:
     """ transmits some of the photons depending on their wavelength."""
@@ -484,7 +514,7 @@ def propagate_to_reflector(photons, location):
     photons.r_x = photons.r_x + distance_z * photons.ez_x / photons.ez_z
     photons.r_y = photons.r_y + distance_z * photons.ez_y / photons.ez_z
     photons.r_z = location_v
-    cp.cuda.Device().synchronize()
+#    cp.cuda.Device().synchronize()
 
 def propagate_to_camera(photons, location):
     # prune photons heading the wrong way
@@ -496,4 +526,4 @@ def propagate_to_camera(photons, location):
     photons.r_x = photons.r_x + distance_z * photons.ez_x / photons.ez_z
     photons.r_y = photons.r_y + distance_z * photons.ez_y / photons.ez_z
     photons.r_z = location_v
-    cp.cuda.Device().synchronize()
+#    cp.cuda.Device().synchronize()

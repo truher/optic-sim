@@ -17,8 +17,10 @@ def plot_polar_histogram(data: simulation.Histogram):
     # mirror the data so it looks nice
     axes.plot((data._bin_edges[1:]+data._bin_edges[:-1])/2,
               data._hist, color="blue", snap=False)
+#              data._hist.get(), color="blue", snap=False)
     axes.plot(-(data._bin_edges[1:]+data._bin_edges[:-1])/2,
               data._hist, color="blue", snap=False)
+#              data._hist.get(), color="blue", snap=False)
     axes.set_title(data._title)
     axes.set_xlabel(data._xlabel)
     axes.set_ylabel(data._ylabel)
@@ -215,6 +217,8 @@ def plot_stage_3d(stage):
     plot = k3d.plot(axes=['x (mm)', 'y (mm)', 'z (mm)'])
     plot += k3d.vectors(stage._sample._p * scale,
                         stage._sample._d * stage._ray_length * scale,
+#    plot += k3d.vectors(stage._sample._p.get() * scale,
+#                        stage._sample._d.get() * stage._ray_length * scale,
                         head_size = stage._ray_length * scale / head_scale,
                         color=stage._ray_color)
     xmin = stage._box[0] * scale

@@ -37,6 +37,8 @@ class PhotonsStacked:
         else:
             self._p = np.concatenate([self._p, p])
             self._d = np.concatenate([self._d, d])
+#            self._p = cp.concatenate([self._p, p])
+#            self._d = cp.concatenate([self._d, d])
 
 
 class ResultStage:
@@ -90,14 +92,11 @@ class Simulator:
         self._bundle_size = bundle_size
 
     @staticmethod
-    def one_histogram_phi(bins, size, photon_batch_alive, photon_batch_wavelength_nm,
+    def one_histogram_phi(grid_size, block_size, bins, size, photon_batch_alive, photon_batch_wavelength_nm,
                       photon_batch_dimension1, photon_batch_dimension2,
                       photons_per_bundle,
                       dim_min, dim_max, title, xlabel, ylabel, bin_area, duration_s,
                       histogram_output):
-        threads_per_block = bins  # because the threads write back
-        grid_size = (int(math.ceil(size / threads_per_block)), 1, 1)
-        block_size = (threads_per_block, 1, 1)
         h = cp.zeros(bins, dtype=np.float32) # joules, so this is joules per bucket
 
         stats_cuda.histogram_phi(
@@ -116,24 +115,22 @@ class Simulator:
             ),
         )
 
-        cp.cuda.Device().synchronize()
+#        cp.cuda.Device().synchronize()
 
         histogram_output._bin_edges = np.linspace(dim_min, dim_max, bins + 1)
         #histogram_output._hist = h.get()
         histogram_output.add(h.get()/(bin_area * duration_s))
+#        histogram_output.add(h/(bin_area * duration_s))
         histogram_output._title = title
         histogram_output._xlabel = xlabel
         histogram_output._ylabel = ylabel
 
     @staticmethod
-    def one_histogram_theta(bins, size, photon_batch_alive, photon_batch_wavelength_nm,
+    def one_histogram_theta(grid_size, block_size, bins, size, photon_batch_alive, photon_batch_wavelength_nm,
                       photon_batch_dimension1,
                       photons_per_bundle,
                       dim_min, dim_max, title, xlabel, ylabel, bin_area, duration_s,
                       histogram_output):
-        threads_per_block = bins  # because the threads write back
-        grid_size = (int(math.ceil(size / threads_per_block)), 1, 1)
-        block_size = (threads_per_block, 1, 1)
         h = cp.zeros(bins, dtype=np.float32) # joules, so this is joules per bucket
         stats_cuda.histogram_theta(
             grid_size,
@@ -150,25 +147,23 @@ class Simulator:
             ),
         )
 
-        cp.cuda.Device().synchronize()
+#        cp.cuda.Device().synchronize()
 
         histogram_output._bin_edges = np.linspace(dim_min, dim_max, bins + 1)
         #histogram_output._hist = h.get()
         histogram_output.add(h.get()/(bin_area * duration_s))
+#        histogram_output.add(h/(bin_area * duration_s))
         histogram_output._title = title
         histogram_output._xlabel = xlabel
         histogram_output._ylabel = ylabel
 
 
     @staticmethod
-    def one_histogram(bins, size, photon_batch_alive, photon_batch_wavelength_nm,
+    def one_histogram(grid_size, block_size, bins, size, photon_batch_alive, photon_batch_wavelength_nm,
                       photon_batch_dimension1,
                       photons_per_bundle,
                       dim_min, dim_max, title, xlabel, ylabel, bin_area, duration_s,
                       histogram_output):
-        threads_per_block = bins  # because the threads write back
-        grid_size = (int(math.ceil(size / threads_per_block)), 1, 1)
-        block_size = (threads_per_block, 1, 1)
         h = cp.zeros(bins, dtype=np.float32) # joules, so this is joules per bucket
         stats_cuda.histogram(
             grid_size,
@@ -185,10 +180,11 @@ class Simulator:
             ),
         )
 
-        cp.cuda.Device().synchronize()
+#        cp.cuda.Device().synchronize()
 
         histogram_output._bin_edges = np.linspace(dim_min, dim_max, bins + 1)
         histogram_output.add(h.get()/(bin_area * duration_s))
+#        histogram_output.add(h/(bin_area * duration_s))
         histogram_output._title = title
         histogram_output._xlabel = xlabel
         histogram_output._ylabel = ylabel
@@ -209,10 +205,28 @@ class Simulator:
 
         bins = 128
         size = photon_batch.size()
+        # strids = work per thread 
+        #strides = 1 # 3.2 s 
+        #strides = 2 # 1.6 s
+        #strides = 4 # 1.2 s =
+        #strides = 8 # 1.1 s, 1.6s
+        #strides = 16 # 1.1 s
+        strides = 32 # 1.1 s
+        #strides = 64 # 1.1 s, 1.1 s
+        #strides = 128 # 1.1 s
+        #strides = 256 # 1.1 s
+        #strides = 512 # 1.2 s =
+        #strides = 1024 # 1.2 s
+        #strides = 2048 # 1.1 s
+        #strides = 4096 # 1.8 s
+        #strides = 8192 # 3.3 s
+
+        grid_size = (int(math.ceil(size / (bins * strides))), )
+        block_size = (bins, )
 
         # for an areal histogram, measure radiosity, power per area, w/m^2
         bin_area_m2 = (y_max - y_min) * (x_max - x_min) / bins
-        Simulator.one_histogram(bins, size,
+        Simulator.one_histogram(grid_size, block_size, bins, size,
                 photon_batch.alive,
                 photon_batch.wavelength_nm,
                 photon_batch.r_x,
@@ -223,7 +237,7 @@ class Simulator:
                 bin_area_m2, photon_batch.duration_s,
                 stage._histogram_r_x)
 
-        Simulator.one_histogram(bins, size,
+        Simulator.one_histogram(grid_size, block_size, bins, size,
                 photon_batch.alive,
                 photon_batch.wavelength_nm,
                 photon_batch.r_y,
@@ -236,7 +250,7 @@ class Simulator:
                 stage._histogram_r_y)
 
 #        # this is not very useful, maybe remove it.
-#        Simulator.one_histogram(bins, size,
+#        Simulator.one_histogram(grid_size, block_size, bins, size,
 #                photon_batch.alive,
 #                photon_batch.wavelength_nm,
 #                photon_batch.r_z,
@@ -253,7 +267,7 @@ class Simulator:
         bin_area_sr = 4 * np.pi / bins
         # note that the radiant intensity varies a lot by *theta* i.e. not the
         # quantity bucketed here (see below)
-        Simulator.one_histogram_phi(bins, size,
+        Simulator.one_histogram_phi(grid_size, block_size, bins, size,
                 photon_batch.alive,
                 photon_batch.wavelength_nm,
                 photon_batch.ez_y,
@@ -267,7 +281,7 @@ class Simulator:
                 stage._histogram_ez_phi)
 
 #        # this isn't very useful, maybe remove it.
-#        Simulator.one_histogram_theta(bins, size,
+#        Simulator.one_histogram_theta(grid_size, block_size, bins, size,
 #                photon_batch.alive,
 #                photon_batch.wavelength_nm,
 #                photon_batch.ez_z,
@@ -280,8 +294,10 @@ class Simulator:
 #                stage._histogram_ez_theta)
 
         bin_edges = np.linspace(theta_min, theta_max, bins + 1)
+#        bin_edges = cp.linspace(theta_min, theta_max, bins + 1)
         bin_area_sr = (np.cos(bin_edges[:-1]) - np.cos(bin_edges[1:]) ) * 2 * np.pi
-        Simulator.one_histogram_theta(bins, size,
+#        bin_area_sr = (cp.cos(bin_edges[:-1]) - cp.cos(bin_edges[1:]) ) * 2 * np.pi
+        Simulator.one_histogram_theta(grid_size, block_size, bins, size,
                 photon_batch.alive,
                 photon_batch.wavelength_nm,
                 photon_batch.ez_z,
@@ -296,8 +312,10 @@ class Simulator:
 
         bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
         projected_area_m2 =  (y_max - y_min) * (x_max - x_min)  * np.abs(np.cos(bin_centers))
+#        projected_area_m2 =  (y_max - y_min) * (x_max - x_min)  * cp.abs(cp.cos(bin_centers))
         bin_area_sr_m2 = (np.cos(bin_edges[:-1]) - np.cos(bin_edges[1:]) ) * 2 * np.pi * projected_area_m2
-        Simulator.one_histogram_theta(bins, size,
+#        bin_area_sr_m2 = (cp.cos(bin_edges[:-1]) - cp.cos(bin_edges[1:]) ) * 2 * np.pi * projected_area_m2
+        Simulator.one_histogram_theta(grid_size, block_size, bins, size,
                 photon_batch.alive,
                 photon_batch.wavelength_nm,
                 photon_batch.ez_z,
@@ -332,11 +350,10 @@ class Simulator:
 
     def run(self):
         """Add a run to the results."""
-        t0 = time.monotonic_ns()
-        cp.cuda.Device().synchronize()
-        t1 = time.monotonic_ns()
-        print(f"duration 0.0 {t1 -t0}")
-        t0 = t1
+
+        timer = MyTimer()
+#        t0 = time.monotonic_ns()
+
         # make some photons
 
         # about a millimeter square
@@ -359,33 +376,21 @@ class Simulator:
                                                            source_photons_per_bundle,
                                                            duration_s)
 
-        cp.cuda.Device().synchronize()
-        t1 = time.monotonic_ns()
-        print(f"duration 0.5 {t1 -t0}")
-        t0 = t1
-
         photons = source.make_photons(self._bundles)
 
-        cp.cuda.Device().synchronize()
-        t1 = time.monotonic_ns()
-        print(f"duration 1.0 {t1 -t0}")
-        t0 = t1
+#        cp.cuda.Device().synchronize()
+#        t1 = time.monotonic_ns()
+#        print(f"duration 1.0 {t1 -t0}")
+#        t0 = t1
+        timer.tick("duration 1.0")
 
-        # this is just for example
-        energy_j = photons.energy_j()
-        power_w = photons.power_w()
-        print(f"photon batch energy joules: {energy_j:.3e}")
-        print(f"photon batch power watts: {power_w:.3e}")
+        photons.debug()
 
-        emitter_area_m2 = source_size_m * source_size_m
-        print(f"emitter area m^2: {emitter_area_m2:.3e}")
-        radiosity_w_m2 = power_w / emitter_area_m2
-        print(f"batch radiosity w/m^2: {radiosity_w_m2:.3e}")
-
-        cp.cuda.Device().synchronize()
-        t1 = time.monotonic_ns()
-        print(f"duration 1.2 {t1 -t0}")
-        t0 = t1
+        timer.tick("duration 1.2")
+#        cp.cuda.Device().synchronize()
+#        t1 = time.monotonic_ns()
+#        print(f"duration 1.2 {t1 -t0}")
+#        t0 = t1
 
         # make histograms
 
@@ -405,10 +410,11 @@ class Simulator:
         self._results._source_stage._label = "Source"
 
 
-        cp.cuda.Device().synchronize()
-        t1 = time.monotonic_ns()
-        print(f"duration 1.5 {t1 -t0}")
-        t0 = t1
+        timer.tick("duration 1.5")
+#        cp.cuda.Device().synchronize()
+#        t1 = time.monotonic_ns()
+#        print(f"duration 1.5 {t1 -t0}")
+#        t0 = t1
 
         # propagate through the reflective light box
 
@@ -418,10 +424,11 @@ class Simulator:
         #lightbox.propagate(photons)
         lightbox.propagate_without_kernel(photons)
 
-        cp.cuda.Device().synchronize()
-        t1 = time.monotonic_ns()
-        print(f"duration 2.0 {t1 -t0}")
-        t0 = t1
+        timer.tick("duration 2.0")
+#        cp.cuda.Device().synchronize()
+#        t1 = time.monotonic_ns()
+#        print(f"duration 2.0 {t1 -t0}")
+#        t0 = t1
 
         # make histograms
 
@@ -439,20 +446,22 @@ class Simulator:
         self._results._box_stage._box_color = 0x808080
         self._results._box_stage._label = "Lightbox"
 
-        cp.cuda.Device().synchronize()
-        t1 = time.monotonic_ns()
-        print(f"duration 3.0 {t1 -t0}")
-        t0 = t1
+        timer.tick("duration 3.0")
+#        cp.cuda.Device().synchronize()
+#        t1 = time.monotonic_ns()
+#        print(f"duration 3.0 {t1 -t0}")
+#        t0 = t1
 
         # diffuse through the diffuser
 
         diffuser = optics_cuda.Diffuser(g = np.float32(0.64), absorption = np.float32(0.16))
         diffuser.diffuse(photons)
 
-        cp.cuda.Device().synchronize()
-        t1 = time.monotonic_ns()
-        print(f"duration 3.2 {t1 -t0}")
-        t0 = t1
+        timer.tick("duration 3.2")
+#        cp.cuda.Device().synchronize()
+#        t1 = time.monotonic_ns()
+#        print(f"duration 3.2 {t1 -t0}")
+#        t0 = t1
 
         # make histograms
 
@@ -470,10 +479,11 @@ class Simulator:
         self._results._diffuser_stage._box_color = 0x808080
         self._results._diffuser_stage._label = "Diffuser"
 
-        cp.cuda.Device().synchronize()
-        t1 = time.monotonic_ns()
-        print(f"duration 3.5 {t1 -t0}")
-        t0 = t1
+        timer.tick("duration 3.5")
+#        cp.cuda.Device().synchronize()
+#        t1 = time.monotonic_ns()
+#        print(f"duration 3.5 {t1 -t0}")
+#        t0 = t1
 
         # propagate to the reflector
 
@@ -486,10 +496,11 @@ class Simulator:
         # eliminate photons that miss the reflector
         photons.prune_outliers(reflector_size_m)
 
-        cp.cuda.Device().synchronize()
-        t1 = time.monotonic_ns()
-        print(f"duration 4.0 {t1 -t0}")
-        t0 = t1
+        timer.tick("duration 4.0")
+#        cp.cuda.Device().synchronize()
+#        t1 = time.monotonic_ns()
+#        print(f"duration 4.0 {t1 -t0}")
+#        t0 = t1
 
         # make histograms
 
@@ -508,10 +519,11 @@ class Simulator:
         self._results._outbound_stage._box_color = 0x808080
         self._results._outbound_stage._label = "Outbound"
 
-        cp.cuda.Device().synchronize()
-        t1 = time.monotonic_ns()
-        print(f"duration 4.5 {t1 -t0}")
-        t0 = t1
+        timer.tick("duration 4.5")
+#        cp.cuda.Device().synchronize()
+#        t1 = time.monotonic_ns()
+#        print(f"duration 4.5 {t1 -t0}")
+#        t0 = t1
 
         # reflect
 
@@ -519,10 +531,11 @@ class Simulator:
         reflector = optics_cuda.Diffuser(g = np.float32(-0.9925), absorption=np.float32(0.0))
         reflector.diffuse(photons)
 
-        cp.cuda.Device().synchronize()
-        t1 = time.monotonic_ns()
-        print(f"duration 5.0 {t1 -t0}")
-        t0 = t1
+        timer.tick("duration 5.0")
+#        cp.cuda.Device().synchronize()
+#        t1 = time.monotonic_ns()
+#        print(f"duration 5.0 {t1 -t0}")
+#        t0 = t1
 
         # make histograms
 
@@ -540,10 +553,11 @@ class Simulator:
         self._results._inbound_stage._box_color = 0x808080
         self._results._inbound_stage._label = "Inbound"
 
-        cp.cuda.Device().synchronize()
-        t1 = time.monotonic_ns()
-        print(f"duration 5.5 {t1 -t0}")
-        t0 = t1
+        timer.tick("duration 5.5")
+#        cp.cuda.Device().synchronize()
+#        t1 = time.monotonic_ns()
+#        print(f"duration 5.5 {t1 -t0}")
+#        t0 = t1
 
         # propagate to the camera
 
@@ -554,10 +568,11 @@ class Simulator:
         camera_neighborhood_m = 0.2
         photons.prune_outliers(camera_neighborhood_m)
 
-        cp.cuda.Device().synchronize()
-        t1 = time.monotonic_ns()
-        print(f"duration 6.0 {t1 -t0}")
-        t0 = t1
+        timer.tick("duration 6.0")
+#        cp.cuda.Device().synchronize()
+#        t1 = time.monotonic_ns()
+#        print(f"duration 6.0 {t1 -t0}")
+#        t0 = t1
 
         # make histograms
 
@@ -575,11 +590,22 @@ class Simulator:
         self._results._camera_plane_stage._box_color = 0x0000ff
         self._results._camera_plane_stage._label = "Camera"
 
+        timer.tick("duration 7.0")
+#        cp.cuda.Device().synchronize()
+#        t1 = time.monotonic_ns()
+#        print(f"duration 7.0 {t1 -t0}")
+#        t0 = t1
+
+
+class MyTimer:
+    def __init__(self):
+        self._t0 = time.monotonic_ns()
+    def tick(self, label):
+        return
         cp.cuda.Device().synchronize()
         t1 = time.monotonic_ns()
-        print(f"duration 7.0 {t1 -t0}")
-        t0 = t1
-
+        print(f"{label} {t1 -self._t0}")
+        self._t0 = t1
 
 class Study:
     """Sweep some parameters while measuring output."""
