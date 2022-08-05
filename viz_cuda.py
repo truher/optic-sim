@@ -210,16 +210,18 @@ def plot_histogram_slices(
 
 
 def plot_stage_3d(stage):
-    plot = k3d.plot()
-    plot += k3d.vectors(stage._sample._p * 1000,
-                        stage._sample._d * stage._ray_length * 1000,
-                        head_size = stage._ray_length * 1000,
+    scale = 1000
+    head_scale = 10
+    plot = k3d.plot(axes=['x (mm)', 'y (mm)', 'z (mm)'])
+    plot += k3d.vectors(stage._sample._p * scale,
+                        stage._sample._d * stage._ray_length * scale,
+                        head_size = stage._ray_length * scale / head_scale,
                         color=stage._ray_color)
-    xmin = stage._box[0] * 1000
-    xmax = stage._box[1] * 1000
-    ymin = stage._box[2] * 1000
-    ymax = stage._box[3] * 1000
-    z = stage._box[4] * 1000
+    xmin = stage._box[0] * scale
+    xmax = stage._box[1] * scale
+    ymin = stage._box[2] * scale
+    ymax = stage._box[3] * scale
+    z = stage._box[4] * scale
     plot += k3d.mesh([[xmin, ymin, z], [xmax, ymin, z], [xmax, ymax, z], [xmin, ymax, z]],
                      [[0, 1, 2], [2, 3, 0]],
                      opacity=0.6, color=stage._box_color, side="both")

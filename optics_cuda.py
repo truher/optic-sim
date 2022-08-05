@@ -391,8 +391,8 @@ class Lightbox:
         reflection_count_x = cp.abs(cp.round(r_x_box_widths))
         reflection_count_y = cp.abs(cp.round(r_y_box_widths))
 
-        photons.r_x = self._size * 2 * cp.abs(cp.mod(r_x_box_widths - 0.5, 2) - 1) - 1
-        photons.r_y = self._size * 2 * cp.abs(cp.mod(r_y_box_widths - 0.5, 2) - 1) - 1
+        photons.r_x = self._size * (2 * cp.abs(cp.mod(r_x_box_widths - 0.5, 2) - 1) - 1) / 2
+        photons.r_y = self._size * (2 * cp.abs(cp.mod(r_y_box_widths - 0.5, 2) - 1) - 1) / 2
         photons.r_z = cp.full(photons.size(), self._height, dtype=np.float32)
 
         cp.multiply(photons.ez_x, (1 - 2 * cp.mod(reflection_count_x, 2)), out=photons.ez_x)
@@ -450,7 +450,6 @@ class Diffuser:
         grid_size = int(math.ceil(size/block_size))
         scatter((grid_size,), (block_size,),
                 (photons.ez_x, photons.ez_y, photons.ez_z, theta, phi, size))
-
 
 class ColorFilter:
     """ transmits some of the photons depending on their wavelength."""
