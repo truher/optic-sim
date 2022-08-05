@@ -99,7 +99,8 @@ def do_rotation(
         + (uz * uy * one_cost + ux * sint) * Y
         + (cost + uz * uz * one_cost) * Z
     )
-
+    cp.cuda.Device().synchronize()
+ 
     return (x, y, z)
 
 
@@ -123,6 +124,7 @@ def scatter(
         (ux, uy, uz) = do_rotation(ux, uy, uz, vx[i], vy[i], vz[i], phi[i])
         # then rotate the photon around that perpendicular
         (vx[i], vy[i], vz[i]) = do_rotation(vx[i], vy[i], vz[i], ux, uy, uz, theta[i])
+    cp.cuda.Device().synchronize()
 
 
 def get_phi(y: cp.ndarray, x: cp.ndarray) -> cp.ndarray:
@@ -183,6 +185,7 @@ class Photons:
         cp.logical_and(self.alive, self.r_x <= size/2, out=self.alive)
         cp.logical_and(self.alive, self.r_y >= -size/2, out=self.alive)
         cp.logical_and(self.alive, self.r_y <= size/2, out=self.alive)
+        cp.cuda.Device().synchronize()
 #        self.prune()
 
     def sample(self):
@@ -224,6 +227,7 @@ class Photons:
         p = cp.compress(oalive, p, axis=0)
         d = cp.compress(oalive, d, axis=0)
 
+        cp.cuda.Device().synchronize()
         return (p.get(), d.get())
 
     @staticmethod
@@ -293,6 +297,7 @@ class MonochromaticLambertianSource(Source):
         photons.wavelength_nm = cp.full(bundles, self._wavelength_nm, dtype=np.uint16)
         photons.photons_per_bundle = self._photons_per_bundle
         photons.duration_s = self._duration_s
+        cp.cuda.Device().synchronize()
         return photons
 
 
@@ -405,6 +410,7 @@ class Lightbox:
                             cp.logical_and(
                                 cp.less(cp.random.random(photons.size()), photon_survival),
                                 cp.greater(photons.ez_z, 0)), out=photons.alive)
+        cp.cuda.Device().synchronize()
         
 
     def propagate(self, photons: Photons) -> None:
@@ -437,9 +443,15 @@ class Diffuser:
         """
         self._g = np.float32(g)
         self._absorption = np.float32(absorption)
+        # TODO: the actual absorption (and reflection) depends on the incident and scattered angle
+        # like there should be zero emission at 90 degrees.
 
     def diffuse(self, photons: Photons) -> None:
         """ Adjust propagation direction."""
+        # TODO: the actual scattering depends on the incident angle: more thickness
+        # means more scattering.  also more oblique angles internally lead to reflection
+        # at the far side, eventually absorption.
+        # i could just cut it off at the total internal reflection limit.
 
         photons.decimate(self._absorption)
         
@@ -450,6 +462,7 @@ class Diffuser:
         grid_size = int(math.ceil(size/block_size))
         scatter((grid_size,), (block_size,),
                 (photons.ez_x, photons.ez_y, photons.ez_z, theta, phi, size))
+        cp.cuda.Device().synchronize()
 
 class ColorFilter:
     """ transmits some of the photons depending on their wavelength."""
@@ -471,6 +484,7 @@ def propagate_to_reflector(photons, location):
     photons.r_x = photons.r_x + distance_z * photons.ez_x / photons.ez_z
     photons.r_y = photons.r_y + distance_z * photons.ez_y / photons.ez_z
     photons.r_z = location_v
+    cp.cuda.Device().synchronize()
 
 def propagate_to_camera(photons, location):
     # prune photons heading the wrong way
@@ -482,3 +496,4 @@ def propagate_to_camera(photons, location):
     photons.r_x = photons.r_x + distance_z * photons.ez_x / photons.ez_z
     photons.r_y = photons.r_y + distance_z * photons.ez_y / photons.ez_z
     photons.r_z = location_v
+    cp.cuda.Device().synchronize()

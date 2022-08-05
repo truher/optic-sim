@@ -35,9 +35,9 @@ def plot_histogram_data(data: simulation.Histogram):
 def plot_all_histograms(stage):
     plot_histogram_data(stage._histogram_r_x)
     plot_histogram_data(stage._histogram_r_y)
-    plot_histogram_data(stage._histogram_r_z)
+    #plot_histogram_data(stage._histogram_r_z)
     plot_histogram_data(stage._histogram_ez_phi)
-    plot_histogram_data(stage._histogram_ez_theta)
+    #plot_histogram_data(stage._histogram_ez_theta)
     plot_histogram_data(stage._histogram_ez_theta_weighted)
     plot_histogram_data(stage._histogram_ez_theta_radiance)
     plot_polar_histogram(stage._histogram_ez_theta_weighted)

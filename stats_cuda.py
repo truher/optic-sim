@@ -15,15 +15,6 @@ def histogram(
     bin_width: np.float32,
     photons_per_bundle: np.int32
 ) -> None:
-    """Histogram with a map function.
-
-    That way you can transform coordinates on the fly, you don't need to store the transformed
-    version.  For example, store cartesian, but histogram spherical.
-
-    dim_1: cp.ndarray[np.float32]
-    global_histogram: cp.ndarray[np.float32]
-    size: of the input
-    """
     # Create a histogram for this block.  Size must match bins and threads.
     block_histogram = jit.shared_memory(np.float32, 128)
 
@@ -73,16 +64,6 @@ def histogram_phi(
     bin_width: np.float32,
     photons_per_bundle: np.int32
 ) -> None:
-    """Histogram with a map function.
-
-    That way you can transform coordinates on the fly, you don't need to store the transformed
-    version.  For example, store cartesian, but histogram spherical.
-
-    dim_1: cp.ndarray[np.float32]
-    dim_2: cp.ndarray[np.float32], use for phi, 1:x, 2:y
-    global_histogram: cp.ndarray[np.float32]
-    size: of the input
-    """
     # Create a histogram for this block.  Size must match bins and threads.
     block_histogram = jit.shared_memory(np.float32, 128)
 
@@ -130,15 +111,6 @@ def histogram_theta(
     bin_width: np.float32,
     photons_per_bundle: np.int32
 ) -> None:
-    """Histogram with a map function.
-
-    That way you can transform coordinates on the fly, you don't need to store the transformed
-    version.  For example, store cartesian, but histogram spherical.
-
-    dim_1: cp.ndarray[np.float32]
-    global_histogram: cp.ndarray[np.float32]
-    size: of the input
-    """
     # Create a histogram for this block.  Size must match bins and threads.
     block_histogram = jit.shared_memory(np.float32, 128)
 
