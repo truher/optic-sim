@@ -341,7 +341,8 @@ class Simulator:
         lightbox_height = 400
         lightbox_size = 400
         lightbox = optics_cuda.Lightbox(height = lightbox_height, size = lightbox_size)
-        lightbox.propagate(photons)
+        #lightbox.propagate(photons)
+        lightbox.propagate_without_kernel(photons)
 
         cp.cuda.Device().synchronize()
         t1 = time.monotonic_ns()

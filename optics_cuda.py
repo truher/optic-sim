@@ -379,6 +379,34 @@ class Lightbox:
         """,
         no_return = True)
 
+
+    def propagate_without_kernel(self, photons: Photons) -> None:
+        """Avoid conditionals and cuda kernels.  This ignores the
+        xy position of the source, since it's small relative to the box."""
+        absorption = np.float32(0.1) # polished metal inside
+
+        r_x_box_widths = self._height * photons.ez_x / (photons.ez_z * self._size)
+        r_y_box_widths = self._height * photons.ez_y / (photons.ez_z * self._size)
+
+        reflection_count_x = cp.abs(cp.round(r_x_box_widths))
+        reflection_count_y = cp.abs(cp.round(r_y_box_widths))
+
+        photons.r_x = 2 * cp.abs(cp.mod(r_x_box_widths - 0.5, 2) - 1) - 1
+        photons.r_y = 2 * cp.abs(cp.mod(r_y_box_widths - 0.5, 2) - 1) - 1
+        photons.r_z = cp.full(photons.size(), self._height, dtype=np.float32)
+
+        cp.multiply(photons.ez_x, (1 - 2 * cp.mod(reflection_count_x, 2)), out=photons.ez_x)
+        cp.multiply(photons.ez_y, (1 - 2 * cp.mod(reflection_count_y, 2)), out=photons.ez_y)
+
+        total_reflection_count = reflection_count_x + reflection_count_y
+        photon_survival = cp.power((1-absorption), total_reflection_count)
+        photons.alive = cp.logical_and(
+                            photons.alive,
+                            cp.logical_and(
+                                cp.less(cp.random.random(photons.size()), photon_survival),
+                                cp.greater(photons.ez_z, 0)), out=photons.alive)
+        
+
     def propagate(self, photons: Photons) -> None:
         """Propagate (mutate) photons through the light box to the top.
         Deletes absorbed photons.
