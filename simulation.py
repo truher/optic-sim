@@ -99,22 +99,52 @@ class Simulator:
         grid_size = (int(math.ceil(size / threads_per_block)), 1, 1)
         block_size = (threads_per_block, 1, 1)
         h = cp.zeros(bins, dtype=np.float32) # joules, so this is joules per bucket
-        stats_cuda.histogram(
-            grid_size,
-            block_size,
-            (
-                photon_batch_alive,
-                photon_batch_wavelength_nm,
-                photon_batch_dimension1,
-                photon_batch_dimension2,
-                np.int32(mapper),
-                h,
-                np.int32(size),
-                np.float32(dim_min),
-                np.float32((dim_max - dim_min) / bins),
-                np.int32(photons_per_bundle)
-            ),
-        )
+        if mapper == 1:
+            stats_cuda.histogram_phi(
+                grid_size,
+                block_size,
+                (
+                    photon_batch_alive,
+                    photon_batch_wavelength_nm,
+                    photon_batch_dimension1,
+                    photon_batch_dimension2,
+                    h,
+                    np.int32(size),
+                    np.float32(dim_min),
+                    np.float32((dim_max - dim_min) / bins),
+                    np.int32(photons_per_bundle)
+                ),
+            )
+        elif mapper == 2:
+            stats_cuda.histogram_theta(
+                grid_size,
+                block_size,
+                (
+                    photon_batch_alive,
+                    photon_batch_wavelength_nm,
+                    photon_batch_dimension1,
+                    h,
+                    np.int32(size),
+                    np.float32(dim_min),
+                    np.float32((dim_max - dim_min) / bins),
+                    np.int32(photons_per_bundle)
+                ),
+            )
+        else:
+            stats_cuda.histogram(
+                grid_size,
+                block_size,
+                (
+                    photon_batch_alive,
+                    photon_batch_wavelength_nm,
+                    photon_batch_dimension1,
+                    h,
+                    np.int32(size),
+                    np.float32(dim_min),
+                    np.float32((dim_max - dim_min) / bins),
+                    np.int32(photons_per_bundle)
+                ),
+            )
 
         cp.cuda.Device().synchronize()
 
@@ -278,12 +308,15 @@ class Simulator:
         # about a millimeter square
         # TODO: use the actual measurement
         source_size_m = np.float32(0.001)
+
         # 555 nm is the peak lumens per watt.
         # TODO: make each photon in the bundle choose from a distribution
         source_wavelength_nm = 555
+
         # used to calculate energy
         # TODO: calculate this number from the published output
         source_photons_per_bundle = 1e7
+
         # duration of the strobe, used to calculate power
         duration_s = 0.001
         source = optics_cuda.MonochromaticLambertianSource(source_size_m,
@@ -320,10 +353,10 @@ class Simulator:
         self.histogram(photons, self._results._source_stage,
                        x_min = -source_size_m/2, x_max = source_size_m/2,
                        y_min = -source_size_m/2, y_max = source_size_m/2,
-                       z_min = -5, z_max = 5, theta_max = np.pi/2)
+                       z_min = -0.005, z_max = 0.005, theta_max = np.pi/2)
 
         self._results._source_stage._sample.add(photons.sample())
-        self._results._source_stage._ray_length = 1
+        self._results._source_stage._ray_length = 0.001
         self._results._source_stage._ray_color = 0xff0000
         self._results._source_stage._box = [-source_size_m/2, source_size_m/2,
                                             -source_size_m/2, source_size_m/2, 0]
@@ -338,9 +371,9 @@ class Simulator:
 
         # propagate through the reflective light box
 
-        lightbox_height = 400
-        lightbox_size = 400
-        lightbox = optics_cuda.Lightbox(height = lightbox_height, size = lightbox_size)
+        lightbox_height_m = 0.04 # 4 cm
+        lightbox_size_m = 0.04 # 4 cm
+        lightbox = optics_cuda.Lightbox(height = lightbox_height_m, size = lightbox_size_m)
         #lightbox.propagate(photons)
         lightbox.propagate_without_kernel(photons)
 
@@ -352,14 +385,14 @@ class Simulator:
         #self._results._box_stage._photons_size += photons.size()
         self._results._box_stage._photons_size += photons.count_alive()
         self.histogram(photons, self._results._box_stage,
-                       x_min = -lightbox_size/2, x_max = lightbox_size/2,
-                       y_min = -lightbox_size/2, y_max = lightbox_size/2,
-                       z_min = 0, z_max = 1000, theta_max = np.pi/2)
+                       x_min = -lightbox_size_m/2, x_max = lightbox_size_m/2,
+                       y_min = -lightbox_size_m/2, y_max = lightbox_size_m/2,
+                       z_min = 0, z_max = 0.1, theta_max = np.pi/2)
         self._results._box_stage._sample.add(photons.sample())
-        self._results._box_stage._ray_length = 100
+        self._results._box_stage._ray_length = 0.01
         self._results._box_stage._ray_color = 0xff0000
-        self._results._box_stage._box = [-lightbox_size/2, lightbox_size/2,
-                                         -lightbox_size/2, lightbox_size/2, lightbox_height]
+        self._results._box_stage._box = [-lightbox_size_m/2, lightbox_size_m/2,
+                                         -lightbox_size_m/2, lightbox_size_m/2, lightbox_height_m]
         self._results._box_stage._box_color = 0x808080
         self._results._box_stage._label = "Lightbox"
 
@@ -376,27 +409,27 @@ class Simulator:
         #self._results._diffuser_stage._photons_size += photons.size()
         self._results._diffuser_stage._photons_size += photons.count_alive()
         self.histogram(photons, self._results._diffuser_stage,
-                       x_min = -lightbox_size/2, x_max = lightbox_size/2,
-                       y_min = -lightbox_size/2, y_max = lightbox_size/2,
-                       z_min = 0, z_max = 1000)
+                       x_min = -lightbox_size_m/2, x_max = lightbox_size_m/2,
+                       y_min = -lightbox_size_m/2, y_max = lightbox_size_m/2,
+                       z_min = 0, z_max = 0.1)
         self._results._diffuser_stage._sample.add(photons.sample())
-        self._results._diffuser_stage._ray_length = 100
+        self._results._diffuser_stage._ray_length = 0.01
         self._results._diffuser_stage._ray_color = 0xff0000
-        self._results._diffuser_stage._box = [-lightbox_size/2, lightbox_size/2,
-                                              -lightbox_size/2, lightbox_size/2, lightbox_height]
+        self._results._diffuser_stage._box = [-lightbox_size_m/2, lightbox_size_m/2,
+                                              -lightbox_size_m/2, lightbox_size_m/2, lightbox_height_m]
         self._results._diffuser_stage._box_color = 0x808080
         self._results._diffuser_stage._label = "Diffuser"
 
         # propagate to the reflector
 
         # TODO: make distance a parameter
-        #reflector_distance = np.float32(100000)
-        reflector_distance = np.float32(50000)
-        #reflector_distance = np.float32(10000)
-        reflector_size = 1000
-        optics_cuda.propagate_to_reflector(photons, location = reflector_distance)
+        #reflector_distance_m = np.float32(10)
+        reflector_distance_m = np.float32(5)
+        #reflector_distance_m = np.float32(1)
+        reflector_size_m = 0.1 # 10 cm
+        optics_cuda.propagate_to_reflector(photons, location = reflector_distance_m)
         # eliminate photons that miss the reflector
-        photons.prune_outliers(reflector_size)
+        photons.prune_outliers(reflector_size_m)
 
         cp.cuda.Device().synchronize()
         t1 = time.monotonic_ns()
@@ -406,15 +439,15 @@ class Simulator:
         #self._results._outbound_stage._photons_size += photons.size()
         self._results._outbound_stage._photons_size += photons.count_alive()
         self.histogram(photons, self._results._outbound_stage,
-                       x_min = -reflector_size/2, x_max = reflector_size/2,
-                       y_min = -reflector_size/2, y_max = reflector_size/2,
-                       z_min = 0, z_max = reflector_distance,
+                       x_min = -reflector_size_m/2, x_max = reflector_size_m/2,
+                       y_min = -reflector_size_m/2, y_max = reflector_size_m/2,
+                       z_min = 0, z_max = reflector_distance_m,
                        theta_max=np.pi/100)  # a narrow beam
         self._results._outbound_stage._sample.add(photons.sample())
-        self._results._outbound_stage._ray_length = 100
+        self._results._outbound_stage._ray_length = 0.01
         self._results._outbound_stage._ray_color = 0xff0000
-        self._results._outbound_stage._box = [-reflector_size/2, reflector_size/2,
-                                              -reflector_size/2, reflector_size/2, reflector_distance]
+        self._results._outbound_stage._box = [-reflector_size_m/2, reflector_size_m/2,
+                                              -reflector_size_m/2, reflector_size_m/2, reflector_distance_m]
         self._results._outbound_stage._box_color = 0x808080
         self._results._outbound_stage._label = "Outbound"
 
@@ -432,25 +465,25 @@ class Simulator:
         #self._results._inbound_stage._photons_size += photons.size()
         self._results._inbound_stage._photons_size += photons.count_alive()
         self.histogram(photons, self._results._inbound_stage,
-                       x_min = -reflector_size/2, x_max = reflector_size/2,
-                       y_min = -reflector_size/2, y_max = reflector_size/2,
-                       z_min = 0, z_max = reflector_distance, theta_min = np.pi*90/100)
+                       x_min = -reflector_size_m/2, x_max = reflector_size_m/2,
+                       y_min = -reflector_size_m/2, y_max = reflector_size_m/2,
+                       z_min = 0, z_max = reflector_distance_m, theta_min = np.pi*90/100)
         self._results._inbound_stage._sample.add(photons.sample())
-        self._results._inbound_stage._ray_length = 100
+        self._results._inbound_stage._ray_length = 0.01
         self._results._inbound_stage._ray_color = 0xff0000
-        self._results._inbound_stage._box = [-reflector_size/2, reflector_size/2,
-                                              -reflector_size/2, reflector_size/2, reflector_distance]
+        self._results._inbound_stage._box = [-reflector_size_m/2, reflector_size_m/2,
+                                              -reflector_size_m/2, reflector_size_m/2, reflector_distance_m]
         self._results._inbound_stage._box_color = 0x808080
         self._results._inbound_stage._label = "Inbound"
 
         # propagate to the camera
 
         # make the camera height even with the diffuser
-        camera_distance = np.float32(lightbox_height)
-        optics_cuda.propagate_to_camera(photons, location = camera_distance)
+        camera_distance_m = np.float32(lightbox_height_m)
+        optics_cuda.propagate_to_camera(photons, location = camera_distance_m)
         # eliminate photons that miss the camera by a lot
-        camera_neighborhood = 2000
-        photons.prune_outliers(camera_neighborhood)
+        camera_neighborhood_m = 0.2
+        photons.prune_outliers(camera_neighborhood_m)
 
         cp.cuda.Device().synchronize()
         t1 = time.monotonic_ns()
@@ -460,14 +493,14 @@ class Simulator:
         #self._results._camera_plane_stage._photons_size += photons.size()
         self._results._camera_plane_stage._photons_size += photons.count_alive()
         self.histogram(photons, self._results._camera_plane_stage,
-                       x_min = -camera_neighborhood/2, x_max = camera_neighborhood/2,
-                       y_min = -camera_neighborhood/2, y_max = camera_neighborhood/2,
-                       z_min = 0, z_max = camera_distance)
+                       x_min = -camera_neighborhood_m/2, x_max = camera_neighborhood_m/2,
+                       y_min = -camera_neighborhood_m/2, y_max = camera_neighborhood_m/2,
+                       z_min = 0, z_max = camera_distance_m)
         self._results._camera_plane_stage._sample.add(photons.sample())
-        self._results._camera_plane_stage._ray_length = 100
+        self._results._camera_plane_stage._ray_length = 0.01
         self._results._camera_plane_stage._ray_color = 0xff0000
-        # note offset camera
-        self._results._camera_plane_stage._box = [200, 300, -50, 50, camera_distance]
+        # note offset camera, 1 cm square
+        self._results._camera_plane_stage._box = [0.02, 0.03, -0.0050, 0.0050, camera_distance_m]
         self._results._camera_plane_stage._box_color = 0x0000ff
         self._results._camera_plane_stage._label = "Camera"
 
