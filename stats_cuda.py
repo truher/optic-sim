@@ -4,6 +4,8 @@ import scipy.constants
 from cupyx import jit  # type:ignore
 
 
+# there are 3 of these to avoid conditionals and make it simpler to read
+
 @jit.rawkernel()
 def histogram(
     alive: cp.ndarray, # bool
@@ -42,7 +44,6 @@ def histogram(
         energy_per_bundle_j = energy_per_photon_j * photons_per_bundle
 
         # histogram adds up whatever the value is (e.g. joules)
-        #jit.atomic_add(block_histogram, bucket_idx, energy_per_bundle_j)
         jit.atomic_add(block_histogram, bucket_idx, alive[i]*energy_per_bundle_j)
 
     # Wait for all the threads to do it.
@@ -91,7 +92,6 @@ def histogram_phi(
         energy_per_bundle_j = energy_per_photon_j * photons_per_bundle
 
         # histogram adds up whatever the value is (e.g. joules)
-        #jit.atomic_add(block_histogram, bucket_idx, energy_per_bundle_j)
         jit.atomic_add(block_histogram, bucket_idx, alive[i]*energy_per_bundle_j)
 
     # Wait for all the threads to do it.
@@ -138,7 +138,6 @@ def histogram_theta(
         energy_per_bundle_j = energy_per_photon_j * photons_per_bundle
 
         # histogram adds up whatever the value is (e.g. joules)
-        #jit.atomic_add(block_histogram, bucket_idx, energy_per_bundle_j)
         jit.atomic_add(block_histogram, bucket_idx, alive[i]*energy_per_bundle_j)
 
     # Wait for all the threads to do it.

@@ -99,7 +99,6 @@ def do_rotation(
         + (uz * uy * one_cost + ux * sint) * Y
         + (cost + uz * uz * one_cost) * Z
     )
-#    cp.cuda.Device().synchronize()
  
     return (x, y, z)
 
@@ -124,7 +123,6 @@ def scatter(
         (ux, uy, uz) = do_rotation(ux, uy, uz, vx[i], vy[i], vz[i], phi[i])
         # then rotate the photon around that perpendicular
         (vx[i], vy[i], vz[i]) = do_rotation(vx[i], vy[i], vz[i], ux, uy, uz, theta[i])
-#    cp.cuda.Device().synchronize()
 
 
 def get_phi(y: cp.ndarray, x: cp.ndarray) -> cp.ndarray:
@@ -165,19 +163,7 @@ class Photons:
         # TODO: do this without allocating a giant vector
         if p < 0.001:
             return
-#        self.alive = cp.random.random(self.size()) > p
         cp.logical_and(self.alive, cp.random.random(self.size()) > p, out=self.alive)
-#        self.prune()
-
-#    def prune(self):
-#        """ remove dead photons """
-#        self.r_x = cp.compress(self.alive, self.r_x)
-#        self.r_y = cp.compress(self.alive, self.r_y)
-#        self.r_z = cp.compress(self.alive, self.r_z)
-#        self.ez_x = cp.compress(self.alive, self.ez_x)
-#        self.ez_y = cp.compress(self.alive, self.ez_y)
-#        self.ez_z = cp.compress(self.alive, self.ez_z)
-#        self.alive = cp.compress(self.alive, self.alive)
 
     def prune_outliers(self, size):
         """ set out-of-bounds photons to dead """
@@ -185,14 +171,10 @@ class Photons:
         cp.logical_and(self.alive, self.r_x <= size/2, out=self.alive)
         cp.logical_and(self.alive, self.r_y >= -size/2, out=self.alive)
         cp.logical_and(self.alive, self.r_y <= size/2, out=self.alive)
-#        cp.cuda.Device().synchronize()
-#        self.prune()
 
     @staticmethod
     def compress_dead(alive, x):
-        y = cp.compress(alive, x, axis=0)
-#        cp.cuda.Device().synchronize()
-        return y
+        return cp.compress(alive, x, axis=0)
 
     def debug(self, source_size_m):
         #return
@@ -209,19 +191,13 @@ class Photons:
     def sample(self):
         """Take every N-th for plotting 1024.  Returns
         a type the plotter likes, which is two numpy (N,3) vectors"""
-        size = self.size()  # ~35ns
+        size = self.size()
         alive_count = self.count_alive()
         alive_ratio = alive_count / size
-#        block_size = 32 # 0.47
         block_size = 64 # 0.45
-#        block_size = 128 # 0.44
-#        block_size = 256 # 1.7?
         # choose extra to compensate for deadness
         # allow approximate return count
-#        grid_size = int(math.ceil(32 / alive_ratio))
         grid_size = int(math.ceil(16 / alive_ratio))
-#        grid_size = int(math.ceil(8 / alive_ratio))
-#        grid_size = int(math.ceil(4 / alive_ratio))
         selection_size = min(size, grid_size * block_size)
         scale = np.int32(size // selection_size)
 
@@ -251,14 +227,9 @@ class Photons:
             ),
         )
 
-#        cp.cuda.Device().synchronize()
-
         position_3d = Photons.compress_dead(alive_selected, position_3d)
         direction_3d = Photons.compress_dead(alive_selected, direction_3d)
-
-#        cp.cuda.Device().synchronize()
         return (position_3d.get(), direction_3d.get())
-#        return (position_3d, direction_3d)
 
     @staticmethod
     @cp.fuse()
@@ -272,8 +243,6 @@ class Photons:
 
     def energy_j(self) -> float:
         """Energy of this photon bundle."""
-        #print(self.wavelength_nm)
-        #print(self.photons_per_bundle)
         return Photons.energy_j_kernel(self.wavelength_nm, self.photons_per_bundle)
 
     def power_w(self) -> float:
@@ -327,7 +296,6 @@ class MonochromaticLambertianSource(Source):
         photons.wavelength_nm = cp.full(bundles, self._wavelength_nm, dtype=np.uint16)
         photons.photons_per_bundle = self._photons_per_bundle
         photons.duration_s = self._duration_s
-#        cp.cuda.Device().synchronize()
         return photons
 
 
@@ -344,76 +312,6 @@ class Lightbox:
         """
         self._height = height
         self._size = size
-
-
-    _PROPAGATE_KERNEL = cp.ElementwiseKernel(
-        in_params = 'raw uint64 seed, raw float32 absorption, raw float32 height, raw float32 size',
-        out_params = 'float32 r_x, float32 r_y, float32 r_z, float32 ez_x, float32 ez_y, float32 ez_z, bool alive',
-        preamble = """
-        #include <curand.h>
-        #include <curand_kernel.h>""",
-        loop_prep = """
-        int idx = threadIdx.x + blockIdx.x * blockDim.x;
-        curandState state;
-        curand_init(seed, idx, 0, &state);""",
-        operation = """
-        if (!alive) continue;
-//#// do nothing
-//#return;
-        if (ez_z < 0) {
-            alive = false;
-            continue;
-        }
-        register float r_x_tmp = r_x + height * ez_x / ez_z;
-        register float r_y_tmp = r_y + height * ez_y / ez_z;
-        register float ez_x_tmp = ez_x;
-        register float ez_y_tmp = ez_y;
-        
-        bool done_reflecting = false;
-        while (!done_reflecting) {
-            if (r_x_tmp < -size / 2) {
-                r_x_tmp = -size - r_x_tmp;
-                ez_x_tmp *= -1;
-                // er_x_tmp *= -1; // no more persistent perpendicular
-//#                if (curand_uniform(&state) < absorption) break;
-                if (curand_uniform(&state) < absorption) break;
-            } else if (r_x_tmp > size / 2) {
-                r_x_tmp = size - r_x_tmp;
-                ez_x_tmp *= -1;
-                // er_x_tmp *= -1;
-//#                if (curand_uniform(&state) < absorption) break;
-                if (curand_uniform(&state) < absorption) break;
-            } else if (r_y_tmp < -size / 2) {
-                r_y_tmp = -size - r_y_tmp;
-                ez_y_tmp *= -1;
-                // er_y_tmp *= -1;
-//#                if (curand_uniform(&state) < absorption) break;
-                if (curand_uniform(&state) < absorption) break;
-            } else if (r_y_tmp > size / 2) {
-                r_y_tmp = size - r_y_tmp;
-                ez_y_tmp *= -1;
-                // er_y_tmp *= -1;
-//#                if (curand_uniform(&state) < absorption) break;
-                if (curand_uniform(&state) < absorption) break;
-            }
-//#// just reflect one time to see how long it takes
-//#            if (r_x_tmp >= -size / 2 && r_x_tmp <= size / 2
-            if (r_x_tmp >= -size / 2 && r_x_tmp <= size / 2
-//#             && r_y_tmp >= -size / 2 && r_y_tmp <= size / 2)
-             && r_y_tmp >= -size / 2 && r_y_tmp <= size / 2)
-                done_reflecting = true;
-                r_x = r_x_tmp;
-                r_y = r_y_tmp;
-                r_z = height;
-                ez_x = ez_x_tmp;
-                ez_y = ez_y_tmp;
-        }
-        if (!done_reflecting) {
-            alive = false;
-        }
-        """,
-        no_return = True)
-
 
     def propagate_without_kernel(self, photons: Photons) -> None:
         """Avoid conditionals and cuda kernels.  This ignores the
@@ -440,24 +338,6 @@ class Lightbox:
                             cp.logical_and(
                                 cp.less(cp.random.random(photons.size()), photon_survival),
                                 cp.greater(photons.ez_z, 0)), out=photons.alive)
-#        cp.cuda.Device().synchronize()
-        
-
-    def propagate(self, photons: Photons) -> None:
-        """Propagate (mutate) photons through the light box to the top.
-        Deletes absorbed photons.
-        TODO: make this faster, it takes way too long; maybe a real raw kernel with a smaller grid?
-        """
-        seed = np.random.default_rng().integers(1, np.iinfo(np.uint64).max, dtype=np.uint64)
-        absorption = np.float32(0.1) # polished metal inside
-        Lightbox._PROPAGATE_KERNEL(seed, absorption, self._height, self._size,
-                                   photons.r_x, photons.r_y, photons.r_z,
-                                   photons.ez_x, photons.ez_y, photons.ez_z,
-                                   photons.alive,
-                                   block_size = 1024) # smaller block = less tail latency?  .. nope.
-#        cp.cuda.Device().synchronize()
-#        photons.prune() # remove the absorbed photons
-
 
 class Diffuser:
     """Something that changes photon direction.
@@ -507,23 +387,19 @@ def propagate_to_reflector(photons, location):
     # TODO: make a raw kernel for this whole function
     # first get rid of the ones not heading that way
     cp.logical_and(photons.alive, photons.ez_z > 0, out=photons.alive)
-#    photons.prune()
 
     location_v = cp.full(photons.size(), location, dtype=np.float32)
     distance_z = location_v - photons.r_z
     photons.r_x = photons.r_x + distance_z * photons.ez_x / photons.ez_z
     photons.r_y = photons.r_y + distance_z * photons.ez_y / photons.ez_z
     photons.r_z = location_v
-#    cp.cuda.Device().synchronize()
 
 def propagate_to_camera(photons, location):
     # prune photons heading the wrong way
     cp.logical_and(photons.alive, photons.ez_z < 0, out=photons.alive)
-#    photons.prune()
 
     location_v = cp.full(photons.size(), location, dtype=np.float32)
     distance_z = location_v - photons.r_z
     photons.r_x = photons.r_x + distance_z * photons.ez_x / photons.ez_z
     photons.r_y = photons.r_y + distance_z * photons.ez_y / photons.ez_z
     photons.r_z = location_v
-#    cp.cuda.Device().synchronize()
