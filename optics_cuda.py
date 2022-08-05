@@ -194,8 +194,8 @@ class Photons:
 #        cp.cuda.Device().synchronize()
         return y
 
-    def debug(self):
-        return
+    def debug(self, source_size_m):
+        #return
         energy_j = self.energy_j()
         print(f"photon batch energy joules: {energy_j:.3e}")
         power_w = self.power_w()

@@ -21,17 +21,18 @@ def plot_polar_histogram(data: simulation.Histogram):
     axes.plot(-(data._bin_edges[1:]+data._bin_edges[:-1])/2,
               data._hist, color="blue", snap=False)
 #              data._hist.get(), color="blue", snap=False)
-    axes.set_title(data._title)
-    axes.set_xlabel(data._xlabel)
-    axes.set_ylabel(data._ylabel)
+    axes.set_title(data._title, fontsize=14, fontweight='black')
+    axes.set_xlabel(data._xlabel, fontsize=14)
+    axes.set_ylabel(data._ylabel, fontsize=14)
+    plt.tight_layout()
     plt.show()
 
 def plot_histogram_data(data: simulation.Histogram):
     axes = plt.subplot()
     axes.plot((data._bin_edges[1:]+data._bin_edges[:-1])/2, data._hist, snap=False)
-    axes.set_title(data._title)
-    axes.set_xlabel(data._xlabel)
-    axes.set_ylabel(data._ylabel)
+    axes.set_title(data._title, fontsize=14, fontweight='black')
+    axes.set_xlabel(data._xlabel, fontsize=14)
+    axes.set_ylabel(data._ylabel, fontsize=14)
     plt.show()
 
 def plot_all_histograms(stage):

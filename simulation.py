@@ -231,9 +231,9 @@ class Simulator:
                 photon_batch.wavelength_nm,
                 photon_batch.r_x,
                 photon_batch.photons_per_bundle, x_min, x_max, 
-                "Radiosity (W/m^2) by X (m^2)",
-                "X dimension (m^2)",
-                "Radiosity (W/m^2)",
+                "Radiosity",
+                r"X dimension $\mathregular{(m^2)}$",
+                r"Radiosity $\mathregular{(W/m^2)}$",
                 bin_area_m2, photon_batch.duration_s,
                 stage._histogram_r_x)
 
@@ -242,9 +242,9 @@ class Simulator:
                 photon_batch.wavelength_nm,
                 photon_batch.r_y,
                 photon_batch.photons_per_bundle, y_min, y_max, 
-                "Radiosity (W/m2) by Y (m^2)",
-                "Y dimension (m^2))",
-                "Radiosity (W/m^2)",
+                "Radiosity",
+                r"Y dimension $\mathregular{(m^2)}$",
+                r"Radiosity $\mathregular{(W/m^2)}$",
                 bin_area_m2, # happens to be same as above
                 photon_batch.duration_s,
                 stage._histogram_r_y)
@@ -273,9 +273,9 @@ class Simulator:
                 photon_batch.ez_y,
                 photon_batch.ez_x,
                 photon_batch.photons_per_bundle, phi_min, phi_max, 
-                "Radiant Intensity (W/sr) by azimuth phi (radians)",
-                "Azimuth phi (radians)",
-                "Radiant Intensity (W/sr)",
+                "Radiant Intensity",
+                r"Azimuth phi $\mathregular{(radians)}$",
+                r"Radiant Intensity $\mathregular{(W/sr)}$",
                 bin_area_sr,
                 photon_batch.duration_s,
                 stage._histogram_ez_phi)
@@ -302,9 +302,9 @@ class Simulator:
                 photon_batch.wavelength_nm,
                 photon_batch.ez_z,
                 photon_batch.photons_per_bundle, theta_min, theta_max, 
-                "Radiant Intensity (W/sr) per polar angle theta (radians)",
-                "Polar angle theta (radians)",
-                "Radiant Intensity (W/sr)",
+                "Radiant Intensity",
+                r"Polar angle theta $\mathregular{(radians)}$",
+                r"Radiant Intensity $\mathregular{(W/sr)}$",
                 bin_area_sr,
                 photon_batch.duration_s,
                 stage._histogram_ez_theta_weighted)
@@ -320,9 +320,9 @@ class Simulator:
                 photon_batch.wavelength_nm,
                 photon_batch.ez_z,
                 photon_batch.photons_per_bundle, theta_min, theta_max, 
-                "Radiance (W/sr/m2) per polar angle theta (radians)",
-                "Polar angle theta (radians)",
-                "Radiance (W/sr/m2)",
+                "Radiance",
+                "Polar angle theta $\mathregular{(radians)}$",
+                "Radiance $\mathregular{(W/sr/m^2)}$",
                 bin_area_sr_m2,
                 photon_batch.duration_s,
                 stage._histogram_ez_theta_radiance)
@@ -366,7 +366,9 @@ class Simulator:
 
         # used to calculate energy
         # TODO: calculate this number from the published output
-        source_photons_per_bundle = 1e7
+        # waves: 100; photons per bundle: 1e7
+        # waves:  20; photons per bundle: 5e7
+        source_photons_per_bundle = 5e7
 
         # duration of the strobe, used to calculate power
         duration_s = 0.001
@@ -384,7 +386,7 @@ class Simulator:
 #        t0 = t1
         timer.tick("duration 1.0")
 
-        photons.debug()
+        photons.debug(source_size_m)
 
         timer.tick("duration 1.2")
 #        cp.cuda.Device().synchronize()
