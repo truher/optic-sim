@@ -488,8 +488,8 @@ class Simulator:
         # propagate to the reflector
 
         # TODO: make distance a parameter
-        #reflector_distance_m = np.float32(10)
-        reflector_distance_m = np.float32(5)
+        reflector_distance_m = np.float32(10)
+        #reflector_distance_m = np.float32(5)
         #reflector_distance_m = np.float32(1)
         reflector_size_m = 0.1 # 10 cm
         optics_cuda.propagate_to_reflector(photons, location = reflector_distance_m)
