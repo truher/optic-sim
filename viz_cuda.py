@@ -222,10 +222,9 @@ def plot_histogram_slices(
     axes.set_ylabel("photon count per ... ? (TODO: sr)")
 
 
-def plot_stage_3d(stage):
+def _plot_stage_3d(plot, stage):
     scale = 1000
     head_scale = 10
-    plot = k3d.plot(axes=["x (mm)", "y (mm)", "z (mm)"])
     plot += k3d.vectors(
         stage._sample._p * scale,
         stage._sample._d * stage._ray_length * scale,
@@ -245,6 +244,11 @@ def plot_stage_3d(stage):
         side="both",
     )
     plot += k3d.label(stage._label, position=(xmax, ymax, z), label_box=False)
+
+def plot_stages_3d(stages):
+    plot = k3d.plot(axes=["x (mm)", "y (mm)", "z (mm)"])
+    for stage in stages:
+        _plot_stage_3d(plot, stage)
     plot.display()
 
 
