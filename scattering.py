@@ -1,0 +1,131 @@
+from typing import Tuple
+import cupy as cp
+import numpy as np
+from cupyx import jit
+
+# SCATTERING THETA
+
+
+@jit.rawkernel(device=True)
+def _hanley(g: np.float32, r: np.float32) -> np.float32:
+    """r: random[0,2g)"""
+    # TODO: do random inside
+    temp = (1 - g * g) / (1 - g + r)
+    cost = (1 + g * g - temp * temp) / (2 * g)
+    return cp.arccos(cost)
+
+
+@jit.rawkernel()
+def _hanley_loop(random_inout: cp.ndarray, g: np.float32, size: np.int32) -> None:
+    tid = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
+    ntid = jit.gridDim.x * jit.blockDim.x
+    for i in range(tid, size, ntid):
+        random_inout[i] = _hanley(g, random_inout[i])
+
+
+def get_scattering_theta(g: np.float32, size: np.int32) -> cp.ndarray:
+    random_input = cp.random.uniform(
+        np.float32(0), np.float32(2.0 * g), np.int32(size), dtype=np.float32
+    )
+    _hanley_loop((128,), (1024,), (random_input, np.float32(g), np.int32(size)))
+    return random_input
+
+
+# SCATTERING PHI
+
+
+def get_scattering_phi(size: np.int32) -> cp.ndarray:
+    return cp.random.uniform(0, 2 * np.pi, size, dtype=np.float32)
+
+
+# SCATTERING
+
+
+@jit.rawkernel(device=True)
+def any_perpendicular(
+    vx: np.float32, vy: np.float32, vz: np.float32
+) -> Tuple[np.float32, np.float32, np.float32]:
+    if vz < vx:
+        return (vy, -vx, np.float32(0.0))
+    else:
+        return (np.float32(0.0), -vz, vy)
+
+
+@jit.rawkernel(device=True)
+def normalize(
+    x: np.float32, y: np.float32, z: np.float32
+) -> Tuple[np.float32, np.float32, np.float32]:
+    n = cp.sqrt(x * x + y * y + z * z)
+    return (x / n, y / n, z / n)
+
+
+@jit.rawkernel(device=True)
+def unitary_perpendicular(
+    vx: np.float32, vy: np.float32, vz: np.float32
+) -> Tuple[np.float32, np.float32, np.float32]:
+    (ux, uy, uz) = any_perpendicular(vx, vy, vz)
+    return normalize(ux, uy, uz)
+
+
+@jit.rawkernel(device=True)
+def do_rotation(
+    X: np.float32,
+    Y: np.float32,
+    Z: np.float32,
+    ux: np.float32,
+    uy: np.float32,
+    uz: np.float32,
+    theta: np.float32,
+) -> Tuple[np.float32, np.float32, np.float32]:
+    """Rotate v around u."""
+    cost = cp.cos(theta)
+    sint = cp.sin(theta)
+    one_cost = 1 - cost
+
+    x = (
+        (cost + ux * ux * one_cost) * X
+        + (ux * uy * one_cost - uz * sint) * Y
+        + (ux * uz * one_cost + uy * sint) * Z
+    )
+    y = (
+        (uy * ux * one_cost + uz * sint) * X
+        + (cost + uy * uy * one_cost) * Y
+        + (uy * uz * one_cost - ux * sint) * Z
+    )
+    z = (
+        (uz * ux * one_cost - uy * sint) * X
+        + (uz * uy * one_cost + ux * sint) * Y
+        + (cost + uz * uz * one_cost) * Z
+    )
+
+    return (x, y, z)
+
+
+@jit.rawkernel()
+def scatter(
+    vx: cp.ndarray,
+    vy: cp.ndarray,
+    vz: cp.ndarray,
+    theta: cp.ndarray,
+    phi: cp.ndarray,
+    size: np.int32,
+) -> None:
+    """Mutate v according to the angles in theta and phi.
+
+    TODO: do the random part inside, to avoid allocating those huge vectors."""
+    tid = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
+    ntid = jit.gridDim.x * jit.blockDim.x
+    for i in range(tid, size, ntid):
+        (ux, uy, uz) = unitary_perpendicular(vx[i], vy[i], vz[i])
+        # first rotate the perpendicular around the photon axis
+        (ux, uy, uz) = do_rotation(ux, uy, uz, vx[i], vy[i], vz[i], phi[i])
+        # then rotate the photon around that perpendicular
+        (vx[i], vy[i], vz[i]) = do_rotation(vx[i], vy[i], vz[i], ux, uy, uz, theta[i])
+
+
+def get_phi(y: cp.ndarray, x: cp.ndarray) -> cp.ndarray:
+    return cp.arctan2(y, x)
+
+
+def get_theta(z: cp.ndarray) -> cp.ndarray:
+    return cp.arccos(z)

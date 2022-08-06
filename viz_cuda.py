@@ -10,28 +10,44 @@ import simulation
 
 warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
 
-def plot_polar_histogram(data: simulation.Histogram):
+
+def summary(stage):
+    print(f"photon bundle count: {stage._photons_size}")
+    print(f"photon total energy (J): {stage._photons_energy_j}")
+
+
+def plot_polar_histogram(data: stats_cuda.Histogram):
     fig = plt.figure(figsize=[15, 12])
     axes = plt.subplot(projection="polar")
     axes.set_theta_zero_location("N")
     # mirror the data so it looks nice
-    axes.plot((data._bin_edges[1:]+data._bin_edges[:-1])/2,
-              data._hist, color="blue", snap=False)
-    axes.plot(-(data._bin_edges[1:]+data._bin_edges[:-1])/2,
-              data._hist, color="blue", snap=False)
-    axes.set_title(data._title, fontsize=14, fontweight='black')
+    axes.plot(
+        (data._bin_edges[1:] + data._bin_edges[:-1]) / 2,
+        data._hist,
+        color="blue",
+        snap=False,
+    )
+    axes.plot(
+        -(data._bin_edges[1:] + data._bin_edges[:-1]) / 2,
+        data._hist,
+        color="blue",
+        snap=False,
+    )
+    axes.set_title(data._title, fontsize=14, fontweight="black")
     axes.set_xlabel(data._xlabel, fontsize=14)
     axes.set_ylabel(data._ylabel, fontsize=14)
     plt.tight_layout()
     plt.show()
 
-def plot_histogram_data(data: simulation.Histogram):
+
+def plot_histogram_data(data: stats_cuda.Histogram):
     axes = plt.subplot()
-    axes.plot((data._bin_edges[1:]+data._bin_edges[:-1])/2, data._hist, snap=False)
-    axes.set_title(data._title, fontsize=14, fontweight='black')
+    axes.plot((data._bin_edges[1:] + data._bin_edges[:-1]) / 2, data._hist, snap=False)
+    axes.set_title(data._title, fontsize=14, fontweight="black")
     axes.set_xlabel(data._xlabel, fontsize=14)
     axes.set_ylabel(data._ylabel, fontsize=14)
     plt.show()
+
 
 def plot_all_histograms(stage):
     plot_histogram_data(stage._histogram_r_x)
@@ -41,6 +57,7 @@ def plot_all_histograms(stage):
     plot_histogram_data(stage._histogram_ez_theta_radiance)
     plot_polar_histogram(stage._histogram_ez_theta_weighted)
     plot_polar_histogram(stage._histogram_ez_theta_radiance)
+
 
 def plot_histogram_slices(
     photon_batch: optics_cuda.Photons,
@@ -193,9 +210,6 @@ def plot_histogram_slices(
     axes.set_xlabel("polar angle (theta) (degrees)")
     axes.set_ylabel("photon count per ... ? (TODO: sr)")
 
-
-
-
     fig = plt.figure(figsize=[15, 12])
     axes = plt.subplot(projection="polar")
     axes.set_theta_zero_location("N")
@@ -211,19 +225,25 @@ def plot_histogram_slices(
 def plot_stage_3d(stage):
     scale = 1000
     head_scale = 10
-    plot = k3d.plot(axes=['x (mm)', 'y (mm)', 'z (mm)'])
-    plot += k3d.vectors(stage._sample._p * scale,
-                        stage._sample._d * stage._ray_length * scale,
-                        head_size = stage._ray_length * scale / head_scale,
-                        color=stage._ray_color)
+    plot = k3d.plot(axes=["x (mm)", "y (mm)", "z (mm)"])
+    plot += k3d.vectors(
+        stage._sample._p * scale,
+        stage._sample._d * stage._ray_length * scale,
+        head_size=stage._ray_length * scale / head_scale,
+        color=stage._ray_color,
+    )
     xmin = stage._box[0] * scale
     xmax = stage._box[1] * scale
     ymin = stage._box[2] * scale
     ymax = stage._box[3] * scale
     z = stage._box[4] * scale
-    plot += k3d.mesh([[xmin, ymin, z], [xmax, ymin, z], [xmax, ymax, z], [xmin, ymax, z]],
-                     [[0, 1, 2], [2, 3, 0]],
-                     opacity=0.6, color=stage._box_color, side="both")
+    plot += k3d.mesh(
+        [[xmin, ymin, z], [xmax, ymin, z], [xmax, ymax, z], [xmin, ymax, z]],
+        [[0, 1, 2], [2, 3, 0]],
+        opacity=0.6,
+        color=stage._box_color,
+        side="both",
+    )
     plot += k3d.label(stage._label, position=(xmax, ymax, z), label_box=False)
     plot.display()
 
