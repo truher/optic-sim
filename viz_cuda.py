@@ -245,6 +245,7 @@ def _plot_stage_3d(plot, stage):
     )
     plot += k3d.label(stage._label, position=(xmax, ymax, z), label_box=False)
 
+
 def plot_stages_3d(stages):
     plot = k3d.plot(axes=["x (mm)", "y (mm)", "z (mm)"])
     for stage in stages:

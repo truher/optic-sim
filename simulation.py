@@ -53,103 +53,50 @@ class Simulator:
             duration_s,
         )
         photons = source.make_photons(self._bundles)
-        timer.tick("duration 1.0")
         photons.debug(self._results._source_stage._size_m)
-        timer.tick("duration 1.2")
-
-        stats_cuda.histogram(
-            photons,
-            self._results._source_stage,
-            neighborhood=self._results._source_stage._size_m,
-            theta_max=np.pi / 2,
-        )
-
         self.record_results(self._results._source_stage, photons)
-        timer.tick("duration 1.5")
 
         # propagate through the reflective light box
-        lightbox_height_m = self._results._box_stage._height_m
-        lightbox = optics_cuda.Lightbox(height = self._results._box_stage._height_m,
-            size = self._results._box_stage._size_m)
-        lightbox.propagate_without_kernel(photons)
-        timer.tick("duration 2.0")
-
-        stats_cuda.histogram(
-            photons,
-            self._results._box_stage,
-            neighborhood = self._results._box_stage._size_m,
-            theta_max=np.pi / 2,
+        lightbox = optics_cuda.Lightbox(
+            height=self._results._box_stage._height_m,
+            size=self._results._box_stage._size_m,
         )
+        lightbox.propagate_without_kernel(photons)
         self.record_results(self._results._box_stage, photons)
-        timer.tick("duration 3.0")
 
         # diffuse through the diffuser
-        diffuser = optics_cuda.Diffuser(g=np.float32(0.64), absorption=np.float32(0.16))
+        diffuser = optics_cuda.Diffuser(g=0.64, absorption=0.16)
         diffuser.diffuse(photons)
-        timer.tick("duration 3.2")
-
-        stats_cuda.histogram(
-            photons,
-            self._results._diffuser_stage,
-            neighborhood = self._results._diffuser_stage._size_m,
-        )
         self.record_results(self._results._diffuser_stage, photons)
-        timer.tick("duration 3.5")
 
-        # propagate to the reflector
-        optics_cuda.propagate_to_reflector(photons,
-            location = self._results._outbound_stage._height_m)
-
-        # eliminate photons that miss the reflector
+        # propagate to the reflector and eliminate photons that miss it
+        optics_cuda.propagate_to_reflector(
+            photons, location=self._results._outbound_stage._height_m
+        )
         photons.prune_outliers(self._results._outbound_stage._size_m)
-        timer.tick("duration 4.0")
-
-        stats_cuda.histogram(
-            photons,
-            self._results._outbound_stage,
-            neighborhood = self._results._outbound_stage._size_m,
-            theta_max=np.pi / 100,
-        )  # a narrow beam
         self.record_results(self._results._outbound_stage, photons)
-        timer.tick("duration 4.5")
 
-        # reflect
-        # TODO: guess at absorption
-        reflector = optics_cuda.Diffuser(
-            g=np.float32(-0.9925), absorption=np.float32(0.0)
-        )
+        # reflect TODO: guess at absorption
+        reflector = optics_cuda.Diffuser(g=-0.9925, absorption=0.0)
         reflector.diffuse(photons)
-        timer.tick("duration 5.0")
-
-        stats_cuda.histogram(
-            photons,
-            self._results._inbound_stage,
-            neighborhood = self._results._inbound_stage._size_m,
-            theta_min=np.pi * 90 / 100,
-        )
         self.record_results(self._results._inbound_stage, photons)
-        timer.tick("duration 5.5")
 
-        # propagate to the camera
-        optics_cuda.propagate_to_camera(photons,
-            location = self._results._camera_plane_stage._height_m)
-
-        # eliminate photons that miss the camera by a lot
-        photons.prune_outliers(self._results._camera_plane_stage._size_m)
-        timer.tick("duration 6.0")
-
-        stats_cuda.histogram(
-            photons,
-            self._results._camera_plane_stage,
-            neighborhood = self._results._camera_plane_stage._size_m
+        # propagate to the camera and eliminate photons that miss it by a lot
+        optics_cuda.propagate_to_camera(
+            photons, location=self._results._camera_plane_stage._height_m
         )
+        photons.prune_outliers(self._results._camera_plane_stage._size_m)
         self.record_results(self._results._camera_plane_stage, photons)
-        timer.tick("duration 7.0")
+
+        timer.tick("one run")
 
     def record_results(self, stage, photons):
         stage._photons_size += photons.count_alive()
         stage._photons_energy_j += photons.energy_j()
         stage._sample.add(photons.sample())
+        # stats_cuda.histogram(photons, stage, neighborhood = stage._size_m,
+        #    theta_min = stage._theta_min, theta_max = stage._theta_max)
+        stats_cuda.histogram(photons, stage)
 
 
 class Study:
@@ -157,4 +104,3 @@ class Study:
 
     def __init__(self):
         pass
-

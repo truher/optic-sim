@@ -20,23 +20,20 @@ class Histogram:
             self._hist += hist
 
 
-def histogram(
-    photon_batch,
-    stage,
-    neighborhood: float,
-    theta_min: float = 0,
-    theta_max: float = np.pi,
-    phi_min: float = -np.pi,
-    phi_max: float = np.pi,
-):
+def histogram(photon_batch, stage):
     """Make and store a set of histograms."""
     # TODO: do bounds automatically
+
+    neighborhood = stage._size_m
+    theta_min = stage._theta_min
+    theta_max = stage._theta_max
+    phi_min = -np.pi
+    phi_max = np.pi
 
     x_min = -neighborhood / 2
     x_max = neighborhood / 2
     y_min = -neighborhood / 2
     y_max = neighborhood / 2
-    
 
     bins = 128
     size = photon_batch.size()
