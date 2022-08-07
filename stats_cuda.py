@@ -443,3 +443,13 @@ def select_and_stack(
         d[(idx, 1)] = i4[s_i]
         d[(idx, 2)] = i5[s_i]
         oalive[idx] = ialive[s_i]
+
+
+def generate_rand_from_pdf(size, pdf, x_grid):
+    """Given a pdf, produce samples."""
+    cdf = cp.cumsum(pdf)
+    cdf = cdf / cdf[-1]
+    values = cp.random.rand(size)
+    value_bin = cp.searchsorted(cdf, values)
+    random_from_cdf = x_grid[value_bin]
+    return random_from_cdf

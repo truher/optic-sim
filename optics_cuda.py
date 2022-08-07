@@ -33,10 +33,14 @@ class Photons:
     def count_alive(self):
         return cp.count_nonzero(self.alive)
 
-    def decimate(self, p):
-        """Remove photons with probability p."""
+    def retain(self, p):
+        """Retain photons with (vector) probability p."""
+        cp.logical_and(self.alive, cp.random.random(self.size()) < p, out=self.alive)
+
+    def remove(self, p):
+        """Remove photons with (scalar) probability p."""
         # TODO: do this without allocating a giant vector
-        if p < 0.001:
+        if p < 0.001: # shortcut, do i need this?
             return
         cp.logical_and(self.alive, cp.random.random(self.size()) > p, out=self.alive)
 
@@ -159,6 +163,27 @@ def spherical_to_cartesian_raw(theta_z, phi_x, y, size) -> None:
         phi_x[i] = cp.sin(theta_z[i]) * cp.cos(phi_x[i])
         theta_z[i] = cp.cos(theta_z[i])
 
+class PencilSource(Source):
+    """Zero area zero divergence."""
+    def __init__(self, wavelength_nm: int, photons_per_bundle: float, duration_s: float):
+        self._wavelength_nm = wavelength_nm
+        self._photons_per_bundle = photons_per_bundle
+        self._duration_s = duration_s
+
+    def make_photons(self, bundles: np.int32) -> Photons:
+        photons = Photons()
+        photons.r_x = cp.zeros(bundles, dtype=np.float32)
+        photons.r_y = cp.zeros(bundles, dtype=np.float32)
+        photons.r_z = cp.zeros(bundles, dtype=np.float32)
+        photons.ez_x = cp.zeros(bundles, dtype=np.float32)
+        photons.ez_y = cp.zeros(bundles, dtype=np.float32)
+        photons.ez_z = cp.ones(bundles, dtype=np.float32)
+        photons.alive = cp.ones(bundles, dtype=bool)
+        photons.wavelength_nm = cp.full(bundles, self._wavelength_nm, dtype=np.uint16)
+        photons.photons_per_bundle = self._photons_per_bundle
+        photons.duration_s = self._duration_s
+        return photons
+
 
 class MonochromaticLambertianSource(Source):
     def __init__(
@@ -252,6 +277,47 @@ class Lightbox:
             out=photons.alive,
         )
 
+def schlick_reflection(cos_theta_rad: cp.ndarray):
+    """passing cos(theta) is more convenient"""
+    n_1 = 1
+    n_2 = 1.495 # acrylic
+    r_0 = ((n_1 - n_2)/(n_1 + n_2)) ** 2
+    r = r_0 + (1 - r_0) * (1 - cos_theta_rad) ** 5
+    return r
+
+class AcryliteDiffuser:
+    """0D010 DF Acrylite Satinice 'optimum light diffusion' colorless.
+
+       Transmission is 84% for a normal pencil beam; some is absorbed
+       internally, some is reflected internally.  FWHM is 40 degrees.
+    """
+    def __init__(self):
+        self._scattering = scattering.AcryliteScattering()
+        # internal absorption, calibrated to 84% total transmission
+        # for a pencil beam
+        self._absorption = 0.0814
+
+    def diffuse(self, photons):
+        # remove photons reflected at the entry surface
+        photons.retain(1 - schlick_reflection(photons.ez_z))
+
+        # adjust the angles
+        size = np.int32(photons.size())  # TODO eliminate this
+        phi = scattering.get_scattering_phi(size)
+        theta = self._scattering.get_scattering_theta(size)
+        block_size = 1024  # max
+        grid_size = int(math.ceil(size / block_size))
+        scattering.scatter(
+            (grid_size,),
+            (block_size,),
+            (photons.ez_x, photons.ez_y, photons.ez_z, theta, phi, size),
+        )
+
+        # remove photons absorbed internally
+        photons.remove(self._absorption)
+
+        # remove photons reflected at the exit surface
+        photons.retain(1 - schlick_reflection(photons.ez_z))
 
 class Diffuser:
     """Something that changes photon direction.
@@ -277,7 +343,7 @@ class Diffuser:
         # at the far side, eventually absorption.
         # i could just cut it off at the total internal reflection limit.
 
-        photons.decimate(self._absorption)
+        photons.remove(self._absorption)
 
         size = np.int32(photons.size())  # TODO eliminate this
         phi = scattering.get_scattering_phi(size)

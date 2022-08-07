@@ -39,11 +39,11 @@ class SimulationResult:
         # TODO: use the actual measurement
         self._source_stage = ResultStage("Source", 0.001, 0)
         self._source_stage._ray_length = 0.0001
-        self._source_stage._theta_max = np.pi / 2
+        #self._source_stage._theta_max = np.pi / 2
 
         # photons at the top of the light box
         self._box_stage = ResultStage("Lightbox", 0.04, 0.04)
-        self._box_stage._theta_max = np.pi / 2
+        #self._box_stage._theta_max = np.pi / 2
 
         # photons scattered by the diffuser
         self._diffuser_stage = ResultStage("Diffuser", 0.04, 0.04)

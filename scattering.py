@@ -2,6 +2,8 @@ from typing import Tuple
 import cupy as cp
 import numpy as np
 from cupyx import jit
+import stats_cuda
+from scipy.stats import norm
 
 # SCATTERING THETA
 
@@ -29,6 +31,37 @@ def get_scattering_theta(g: np.float32, size: np.int32) -> cp.ndarray:
     )
     _hanley_loop((128,), (1024,), (random_input, np.float32(g), np.int32(size)))
     return random_input
+
+class AcryliteScattering:
+    def __init__(self):
+
+        # parameters from Thor, Acrylite etc
+        # matches Thor shape, Acrylite FWHM of 40 degrees
+        mu = 0 # mean is normal
+        #sigma_1_rad = 18.5 * np.pi / 180
+        #sigma_2_rad = 37 * np.pi / 180
+        sigma_1_rad = 17.25 * np.pi / 180
+        sigma_2_rad = 34.5 * np.pi / 180
+        a_1 = 0.75 # peak
+        a_2 = 0.25 # tails
+        a_3 = 0.008 # Thor data shows this
+        a_1_actually = sigma_1_rad * np.sqrt(2 * np.pi) * a_1
+        a_2_actually = sigma_2_rad * np.sqrt(2 * np.pi) * a_2
+
+        # make a distribution
+        bins = 256
+        theta_rad = np.linspace(0, np.pi/2, bins)
+
+        gaussian_1 = cp.array(a_1_actually * norm.pdf(theta_rad, scale = sigma_1_rad))
+        gaussian_2 = cp.array(a_2_actually * norm.pdf(theta_rad, scale = sigma_2_rad))
+        self.cp_theta_rad = cp.array(theta_rad)
+        self.gaussian_sum = ((gaussian_1 + gaussian_2) * (1-a_3) + a_3)
+
+
+    def get_scattering_theta(self, size):
+        """Does not account for absorption.  Please remove 16% of the rows returned."""
+        return stats_cuda.generate_rand_from_pdf(size, self.gaussian_sum, self.cp_theta_rad)
+    
 
 
 # SCATTERING PHI

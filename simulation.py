@@ -21,7 +21,7 @@ class Simulator:
         self._results = results
         self._waves = waves
         self._bundles = bundles
-        self._bundle_size = bundle_size
+        self._bundle_size = bundle_size # TODO Actually use this?
 
     def run_all_waves(self):
         for i in range(self._waves):
@@ -65,7 +65,8 @@ class Simulator:
         self.record_results(self._results._box_stage, photons)
 
         # diffuse through the diffuser
-        diffuser = optics_cuda.Diffuser(g=0.64, absorption=0.16)
+        #diffuser = optics_cuda.Diffuser(g=0.64, absorption=0.16)
+        diffuser = optics_cuda.AcryliteDiffuser()
         diffuser.diffuse(photons)
         self.record_results(self._results._diffuser_stage, photons)
 
@@ -92,6 +93,7 @@ class Simulator:
 
     def record_results(self, stage, photons):
         stage._photons_size += photons.count_alive()
+        print(f"alive at {stage._label}: {stage._photons_size}")
         stage._photons_energy_j += photons.energy_j()
         stage._sample.add(photons.sample())
         # stats_cuda.histogram(photons, stage, neighborhood = stage._size_m,
