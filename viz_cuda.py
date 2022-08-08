@@ -1,5 +1,6 @@
 import math
 import warnings
+import cupy as cp
 import numpy as np
 import matplotlib  # type: ignore
 import matplotlib.pyplot as plt  # type: ignore
@@ -48,6 +49,22 @@ def plot_histogram_data(data: stats_cuda.Histogram):
     axes.set_ylabel(data._ylabel, fontsize=14)
     plt.show()
 
+def plot_histogram_4d(data: stats_cuda.Histogram):
+    edges = data._bin_edges
+    radiance_w_sr_m2 = data._hist
+
+    max_radiance_w_sr_m2 = cp.amax(radiance_w_sr_m2, axis=(2,3))
+
+    fig=plt.figure(figsize=[15,12])
+    plt.imshow(max_radiance_w_sr_m2.get(),# vmin=0,
+               extent=(edges[0][0].item(), edges[0][-1].item(),
+                       edges[1][0].item(), edges[1][-1].item())) 
+    plt.title(r"Maximum radiance $\mathregular{W/sr\, m^2)}$")
+    plt.xlabel("X (m)")
+    plt.ylabel("Y (m)")
+    plt.colorbar()
+    plt.show()
+
 
 def plot_all_histograms(stage):
     plot_histogram_data(stage._histogram_r_x)
@@ -57,6 +74,7 @@ def plot_all_histograms(stage):
     plot_histogram_data(stage._histogram_ez_theta_radiance)
     plot_polar_histogram(stage._histogram_ez_theta_weighted)
     plot_polar_histogram(stage._histogram_ez_theta_radiance)
+    plot_histogram_4d(stage._histogram_4d_radiance)
 
 
 def plot_histogram_slices(

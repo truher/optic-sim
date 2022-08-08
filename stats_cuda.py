@@ -153,6 +153,53 @@ def histogram(photon_batch, stage):
         stage._histogram_ez_theta_radiance,
     )
 
+    histogram_4d(photon_batch,
+                 r"Maximum radiance per bundle $\mathregular{W/sr\, m^2)}$",
+                 "X (m)",
+                 "Y (m)",
+                 stage._histogram_4d_radiance)
+
+def histogram_4d(photons,
+                 title,
+                 xlabel,
+                 ylabel,
+                 histogram_output):
+    bins = 10
+
+    points = (photons.r_x, photons.r_y,
+              cp.arccos(photons.ez_z), cp.arctan2(photons.ez_y, photons.ez_x)) 
+    wavelength_m = photons.wavelength_nm * 1e-9
+    frequency_hz = scipy.constants.c / wavelength_m
+    energy_per_photon_j = scipy.constants.h * frequency_hz
+    energy_per_bundle_j = energy_per_photon_j * photons.photons_per_bundle
+
+    # joules
+    (energy_per_bin_j, edges) = cp.histogramdd(points, bins=(bins,bins,bins,bins),
+                                  weights=energy_per_bundle_j)
+
+    bin_area_m2 = cp.outer(edges[0][1:] - edges[0][:-1],
+                           edges[1][1:] - edges[1][:-1])
+    bin_area_m2_stretched = bin_area_m2[:,:,None,None]
+
+    bin_area_sr = cp.outer(cp.cos(edges[2][:-1]) - cp.cos(edges[2][1:]),
+                           edges[3][1:] - edges[3][:-1])
+    bin_area_sr_stretched = bin_area_sr[None,None,:,:]
+
+    power_per_bin_w = energy_per_bin_j/photons.duration_s
+    intensity_w_sr = power_per_bin_w / bin_area_sr_stretched
+    radiance_w_sr_m2 = intensity_w_sr / bin_area_m2_stretched
+
+    # TODO: the bin edges may not be the same from batch to batch
+    histogram_output._bin_edges = edges
+    histogram_output.add(radiance_w_sr_m2)
+
+    histogram_output._title = title
+    histogram_output._xlabel = xlabel
+    histogram_output._ylabel = ylabel
+
+
+
+
 
 # there are 3 of these to avoid conditionals and make it simpler to read
 
