@@ -277,13 +277,29 @@ class Lightbox:
             out=photons.alive,
         )
 
-def schlick_reflection(cos_theta_rad: cp.ndarray):
-    """passing cos(theta) is more convenient"""
-    n_1 = 1
-    n_2 = 1.495 # acrylic
+def schlick_reflection(n_1: float, n_2: float, cos_theta_rad: cp.ndarray):
+    """passing cos(theta) is more convenient
+    This does not account for total internal reflection, so maybe only useful
+    for rough surfaces.
+    """
     r_0 = ((n_1 - n_2)/(n_1 + n_2)) ** 2
     r = r_0 + (1 - r_0) * (1 - cos_theta_rad) ** 5
     return r
+
+def schlick_reflection_with_tir(ni: float, nt: float, cosX: cp.ndarray):
+    """ni = incident side, nt = transmitted side.
+    For rough surfaces, total internal reflection is much reduced,
+    do don't use this one.
+    """
+    r_0 = ((nt - ni)/(nt + ni)) ** 2
+    if ni > nt:
+        inv_eta = ni/nt
+        sinT2 = inv_eta * inv_eta * (1 - cosX * cosX)
+        sinT2 = cp.minimum(sinT2, 1)
+        cosX = cp.sqrt(1 - sinT2)
+    r = r_0 + (1 - r_0) * (1 - cosX) ** 5
+    return r
+
 
 class AcryliteDiffuser:
     """0D010 DF Acrylite Satinice 'optimum light diffusion' colorless.
@@ -291,6 +307,8 @@ class AcryliteDiffuser:
        Transmission is 84% for a normal pencil beam; some is absorbed
        internally, some is reflected internally.  FWHM is 40 degrees.
     """
+    N_AIR = 1.0
+    N_ACRYLIC = 1.495
     def __init__(self):
         self._scattering = scattering.AcryliteScattering()
         # internal absorption, calibrated to 84% total transmission
@@ -298,8 +316,9 @@ class AcryliteDiffuser:
         self._absorption = 0.0814
 
     def diffuse(self, photons):
-        # remove photons reflected at the entry surface
-        photons.retain(1 - schlick_reflection(photons.ez_z))
+        # remove photons reflected at the entry surface (air -> acrylic)
+        photons.retain(1 - schlick_reflection(AcryliteDiffuser.N_AIR,
+            AcryliteDiffuser.N_ACRYLIC, photons.ez_z))
 
         # adjust the angles
         size = np.int32(photons.size())  # TODO eliminate this
@@ -316,8 +335,9 @@ class AcryliteDiffuser:
         # remove photons absorbed internally
         photons.remove(self._absorption)
 
-        # remove photons reflected at the exit surface
-        photons.retain(1 - schlick_reflection(photons.ez_z))
+        # remove photons reflected at the exit surface (acrylic -> air)
+        photons.retain(1 - schlick_reflection(AcryliteDiffuser.N_ACRYLIC,
+            AcryliteDiffuser.N_AIR, photons.ez_z))
 
 class Diffuser:
     """Something that changes photon direction.
