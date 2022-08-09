@@ -21,6 +21,10 @@ class ResultStage:
         self._histogram_ez_theta_radiance = stats_cuda.Histogram()
         # radiance w/sr/m2 by x,y,theta,phi
         self._histogram_4d_radiance = stats_cuda.Histogram()
+        # bundles
+        self._histogram_4d_count = stats_cuda.Histogram()
+        # grr
+        self._scatter = stats_cuda.Scatter()
         self._sample = optics_cuda.PhotonsStacked()
         self._ray_length = 0.01
         self._ray_color = 0xFF0000

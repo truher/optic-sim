@@ -53,16 +53,23 @@ def plot_histogram_4d(data: stats_cuda.Histogram):
     edges = data._bin_edges
     radiance_w_sr_m2 = data._hist
 
-    max_radiance_w_sr_m2 = cp.amax(radiance_w_sr_m2, axis=(2,3))
+    #max_radiance_w_sr_m2 = cp.amax(radiance_w_sr_m2, axis=(2,3))
+    max_radiance_w_sr_m2 = cp.sum(radiance_w_sr_m2, axis=(2,3))
 
     fig=plt.figure(figsize=[15,12])
-    plt.imshow(max_radiance_w_sr_m2.get(),# vmin=0,
+    plt.imshow(max_radiance_w_sr_m2.get(), vmin=0,
                extent=(edges[0][0].item(), edges[0][-1].item(),
                        edges[1][0].item(), edges[1][-1].item())) 
-    plt.title(r"Maximum radiance $\mathregular{W/sr\, m^2)}$")
-    plt.xlabel("X (m)")
-    plt.ylabel("Y (m)")
+    plt.title(data._title, fontsize=14, fontweight="black")
+    plt.xlabel(data._xlabel, fontsize=14)
+    plt.ylabel(data._ylabel, fontsize=14)
     plt.colorbar()
+    plt.show()
+
+
+def plot_scatter(data):
+    fig=plt.figure(figsize=[15,12])
+    plt.plot(data._x.get(), data._y.get(), ',')
     plt.show()
 
 
@@ -75,6 +82,8 @@ def plot_all_histograms(stage):
     plot_polar_histogram(stage._histogram_ez_theta_weighted)
     plot_polar_histogram(stage._histogram_ez_theta_radiance)
     plot_histogram_4d(stage._histogram_4d_radiance)
+    plot_histogram_4d(stage._histogram_4d_count)
+    plot_scatter(stage._scatter)
 
 
 def plot_histogram_slices(

@@ -58,13 +58,13 @@ class Photons:
     def debug(self, source_size_m):
         # return
         energy_j = self.energy_j()
-        print(f"photon batch energy joules: {energy_j:.3e}")
+        #print(f"photon batch energy joules: {energy_j:.3e}")
         power_w = self.power_w()
-        print(f"photon batch power watts: {power_w:.3e}")
+        #print(f"photon batch power watts: {power_w:.3e}")
         emitter_area_m2 = source_size_m * source_size_m
-        print(f"emitter area m^2: {emitter_area_m2:.3e}")
+        #print(f"emitter area m^2: {emitter_area_m2:.3e}")
         radiosity_w_m2 = power_w / emitter_area_m2
-        print(f"batch radiosity w/m^2: {radiosity_w_m2:.3e}")
+        #print(f"batch radiosity w/m^2: {radiosity_w_m2:.3e}")
 
     def sample(self):
         """Take every N-th for plotting 1024.  Returns
@@ -243,7 +243,10 @@ class Lightbox:
     def propagate_without_kernel(self, photons: Photons) -> None:
         """Avoid conditionals and cuda kernels.  This ignores the
         xy position of the source, since it's small relative to the box."""
-        absorption = np.float32(0.1)  # polished metal inside
+###
+# FIX ME
+###        absorption = np.float32(0.1)  # polished metal inside
+        absorption = np.float32(0.01)  # polished metal inside
 
         r_x_box_widths = self._height * photons.ez_x / (photons.ez_z * self._size)
         r_y_box_widths = self._height * photons.ez_y / (photons.ez_z * self._size)

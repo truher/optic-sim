@@ -19,6 +19,23 @@ class Histogram:
         else:
             self._hist += hist
 
+class Scatter:
+    def __init__(self):
+        self._x = None
+        self._y = None
+        self._title = ""
+        self._xlabel = ""
+        self._ylabel = ""
+
+    def add(self, x, y):
+        if self._x is None:
+            self._x = x
+        else:
+            self._x = np.concatenate(self._x, x)
+        if self._y is None:
+            self._y = y
+        else:
+            self._y = np.concatenate(self._y, y)
 
 def histogram(photon_batch, stage):
     """Make and store a set of histograms."""
@@ -154,49 +171,146 @@ def histogram(photon_batch, stage):
     )
 
     histogram_4d(photon_batch,
-                 r"Maximum radiance per bundle $\mathregular{W/sr\, m^2)}$",
+                 x_min,
+                 x_max,
+                 y_min,
+                 y_max,
+                 r"Maximum radiance $\mathregular{W/sr\, m^2)}$",
                  "X (m)",
                  "Y (m)",
                  stage._histogram_4d_radiance)
+    counter(photon_batch,
+                 x_min,
+                 x_max,
+                 y_min,
+                 y_max,
+                 "Bundle count, unscaled",
+                 "X (m)",
+                 "Y (m)",
+                 stage._histogram_4d_count)
+    scatterplot(photon_batch,
+                 "theta vs y",
+                 "y",
+                 "theta",
+                 stage._scatter)
 
-def histogram_4d(photons,
+def counter(photons,
+                 x_min,
+                 x_max,
+                 y_min,
+                 y_max,
                  title,
                  xlabel,
                  ylabel,
                  histogram_output):
-    bins = 10
 
-    points = (photons.r_x, photons.r_y,
-              cp.arccos(photons.ez_z), cp.arctan2(photons.ez_y, photons.ez_x)) 
+    points = (
+        photons.r_x,
+        photons.r_y,
+        cp.arccos(photons.ez_z), # theta
+        cp.arctan2(photons.ez_y, photons.ez_x))  # phi
+
+    (ct_per_bin, edges) = cp.histogramdd(
+        points,
+        bins=(16,4,16,4),
+        range = ((x_min,x_max),(y_min,y_max),(0,np.pi/2),(-np.pi,np.pi)),
+        weights=photons.alive)
+
+    histogram_output._bin_edges = edges
+    histogram_output.add(ct_per_bin)
+
+    histogram_output._title = title
+    histogram_output._xlabel = xlabel
+    histogram_output._ylabel = ylabel
+
+def scatterplot(photons,
+                title,
+                xlabel,
+                ylabel,
+                scatter_output):
+
+    x = photons.r_y
+    y = cp.arccos(photons.ez_z)
+    scatter_output.add(x,y)
+
+def histogram_4d(photons,
+                 x_min,
+                 x_max,
+                 y_min,
+                 y_max,
+                 title,
+                 xlabel,
+                 ylabel,
+                 histogram_output):
+
+    points = (
+        photons.r_x,
+        photons.r_y,
+        cp.arccos(photons.ez_z), # theta
+        cp.arctan2(photons.ez_y, photons.ez_x))  # phi
+
     wavelength_m = photons.wavelength_nm * 1e-9
     frequency_hz = scipy.constants.c / wavelength_m
     energy_per_photon_j = scipy.constants.h * frequency_hz
     energy_per_bundle_j = energy_per_photon_j * photons.photons_per_bundle
 
     # joules
-    (energy_per_bin_j, edges) = cp.histogramdd(points, bins=(bins,bins,bins,bins),
-                                  weights=energy_per_bundle_j)
+    (energy_per_bin_j, edges) = cp.histogramdd(
+        points,
+        bins=(16,4,16,4),
+        range = ((x_min,x_max),(y_min,y_max),(0,np.pi/2),(-np.pi,np.pi)),
+        weights=photons.alive * energy_per_bundle_j)
 
+    print(f"energy_per_bin_j {energy_per_bin_j}")
+    print(f"sum over sphere {cp.sum(energy_per_bin_j, axis=(2,3))}")
+    print(f"sum over area {cp.sum(energy_per_bin_j, axis=(0,1))}")
+    print(f"sum over phi and x {cp.sum(energy_per_bin_j, axis=(0,3))}")
+    print(f"edges {edges}")
+
+    # would this be better as a constant?
     bin_area_m2 = cp.outer(edges[0][1:] - edges[0][:-1],
                            edges[1][1:] - edges[1][:-1])
+
+    print(f"bin_area_m2 {bin_area_m2}")
+    print(f"bin_area_m2 shape {bin_area_m2.shape}")
+
     bin_area_m2_stretched = bin_area_m2[:,:,None,None]
+    print(f"bin_area_m2_stretched {bin_area_m2_stretched}")
+    print(f"bin_area_m2_stretched.shape {bin_area_m2_stretched.shape}")
 
     bin_area_sr = cp.outer(cp.cos(edges[2][:-1]) - cp.cos(edges[2][1:]),
                            edges[3][1:] - edges[3][:-1])
+    print(f"bin_area_sr.shape {bin_area_sr.shape}")
+    print(f"bin_area_sr {bin_area_sr}")
+
     bin_area_sr_stretched = bin_area_sr[None,None,:,:]
+    print(f"bin_area_sr_stretched {bin_area_sr_stretched}")
+    print(f"bin_area_sr_stretched.shape {bin_area_sr_stretched.shape}")
 
     power_per_bin_w = energy_per_bin_j/photons.duration_s
+# the bin area is the problem, duh
     intensity_w_sr = power_per_bin_w / bin_area_sr_stretched
-    radiance_w_sr_m2 = intensity_w_sr / bin_area_m2_stretched
+
+    # whoops, radiance needs *projected* bin area
+    theta_bin_centers = (edges[2][:-1] + edges[2][1:]) / 2
+    theta_bin_centers_stretched = theta_bin_centers[None,None,:,None]
+    projected_area_factor = np.abs(np.cos(theta_bin_centers_stretched))
+
+    print(f"projected_area_factor {projected_area_factor}")
+    print(f"projected_area_factor.shape {projected_area_factor.shape}")
+
+    radiance_w_sr_m2 = intensity_w_sr / (bin_area_m2_stretched * projected_area_factor)
+
+    print(f"radiance_w_sr_m2 {radiance_w_sr_m2}")
 
     # TODO: the bin edges may not be the same from batch to batch
     histogram_output._bin_edges = edges
     histogram_output.add(radiance_w_sr_m2)
+#    histogram_output.add(intensity_w_sr)
 
     histogram_output._title = title
     histogram_output._xlabel = xlabel
     histogram_output._ylabel = ylabel
-
 
 
 

@@ -3,6 +3,7 @@ import numpy as np
 import stats_cuda
 import optics_cuda
 import util
+from tqdm.autonotebook import tqdm, trange
 
 
 class Simulator:
@@ -24,7 +25,8 @@ class Simulator:
         self._bundle_size = bundle_size # TODO Actually use this?
 
     def run_all_waves(self):
-        for i in range(self._waves):
+        #for i in range(self._waves):
+        for i in trange(self._waves):
             self.run()
 
     def run(self):
@@ -70,6 +72,20 @@ class Simulator:
         diffuser.diffuse(photons)
         self.record_results(self._results._diffuser_stage, photons)
 
+#
+#
+#
+#
+#
+#
+        return
+#
+#
+#
+#
+#
+#
+
         # propagate to the reflector and eliminate photons that miss it
         optics_cuda.propagate_to_reflector(
             photons, location=self._results._outbound_stage._height_m
@@ -93,7 +109,7 @@ class Simulator:
 
     def record_results(self, stage, photons):
         stage._photons_size += photons.count_alive()
-        print(f"alive at {stage._label}: {stage._photons_size}")
+        #print(f"alive at {stage._label}: {stage._photons_size}")
         stage._photons_energy_j += photons.energy_j()
         stage._sample.add(photons.sample())
         # stats_cuda.histogram(photons, stage, neighborhood = stage._size_m,
