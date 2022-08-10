@@ -71,11 +71,13 @@ class Photons:
         a type the plotter likes, which is two numpy (N,3) vectors"""
         size = self.size()
         alive_count = self.count_alive()
+        
         alive_ratio = alive_count / size
         # block_size = 64 # 0.45 s
         block_size = 4  # more waves = less sampling
         # choose extra to compensate for deadness
         # allow approximate return count
+        
         grid_size = int(math.ceil(16 / alive_ratio))
         selection_size = min(size, grid_size * block_size)
         scale = np.int32(size // selection_size)
@@ -185,6 +187,42 @@ class PencilSource(Source):
         return photons
 
 
+class FatPencil(Source):
+    def __init__(
+        self,
+        width_m: float,
+        height_m: float,
+        wavelength_nm: int,
+        photons_per_bundle: float,
+        duration_s: float,
+    ):
+        self._width_m = width_m
+        self._height_m = height_m
+        self._wavelength_nm = wavelength_nm
+        self._photons_per_bundle = photons_per_bundle
+        self._duration_s = duration_s
+
+    def make_photons(self, bundles: np.int32) -> Photons:
+        photons = Photons()
+        photons.r_x = cp.random.uniform(
+            -0.5 * self._width_m, 0.5 * self._width_m, bundles, dtype=np.float32
+        )
+        photons.r_y = cp.random.uniform(
+            -0.5 * self._height_m, 0.5 * self._height_m, bundles, dtype=np.float32
+        )
+        photons.r_z = cp.zeros(bundles, dtype=np.float32)
+        #
+        photons.ez_x = cp.zeros(bundles, dtype=np.float32)
+        photons.ez_y = cp.zeros(bundles, dtype=np.float32)
+        photons.ez_z = cp.ones(bundles, dtype=np.float32)
+
+        photons.alive = cp.ones(bundles, dtype=bool)
+        photons.wavelength_nm = cp.full(bundles, self._wavelength_nm, dtype=np.uint16)
+        photons.photons_per_bundle = self._photons_per_bundle
+        photons.duration_s = self._duration_s
+        return photons
+
+
 class MonochromaticLambertianSource(Source):
     def __init__(
         self,
@@ -225,6 +263,19 @@ class MonochromaticLambertianSource(Source):
         photons.duration_s = self._duration_s
         return photons
 
+class SimplerLightbox:
+    """doesn't reflect, doesn't shrink the source to a point."""
+
+    def __init__(self, height: float, size: float):
+        """
+        height: top of the box above the source
+        size: full length or width, box is square.
+        """
+        self._height = height
+        self._size = size
+
+    def propagate_without_kernel(self, photons: Photons) -> None:
+        propagate_to_reflector(photons, self._height)
 
 class Lightbox:
     """Represents the box between the source and diffuser.
@@ -243,10 +294,9 @@ class Lightbox:
     def propagate_without_kernel(self, photons: Photons) -> None:
         """Avoid conditionals and cuda kernels.  This ignores the
         xy position of the source, since it's small relative to the box."""
-###
-# FIX ME
-###        absorption = np.float32(0.1)  # polished metal inside
-        absorption = np.float32(0.01)  # polished metal inside
+      
+
+        absorption = np.float32(0.1)  # polished metal inside
 
         r_x_box_widths = self._height * photons.ez_x / (photons.ez_z * self._size)
         r_y_box_widths = self._height * photons.ez_y / (photons.ez_z * self._size)
@@ -271,6 +321,7 @@ class Lightbox:
 
         total_reflection_count = reflection_count_x + reflection_count_y
         photon_survival = cp.power((1 - absorption), total_reflection_count)
+       
         photons.alive = cp.logical_and(
             photons.alive,
             cp.logical_and(
@@ -279,6 +330,7 @@ class Lightbox:
             ),
             out=photons.alive,
         )
+        
 
 def schlick_reflection(n_1: float, n_2: float, cos_theta_rad: cp.ndarray):
     """passing cos(theta) is more convenient
@@ -309,6 +361,8 @@ class AcryliteDiffuser:
 
        Transmission is 84% for a normal pencil beam; some is absorbed
        internally, some is reflected internally.  FWHM is 40 degrees.
+
+       ... or wd008 white, which is lambertian
     """
     N_AIR = 1.0
     N_ACRYLIC = 1.495
@@ -316,7 +370,10 @@ class AcryliteDiffuser:
         self._scattering = scattering.AcryliteScattering()
         # internal absorption, calibrated to 84% total transmission
         # for a pencil beam
-        self._absorption = 0.0814
+        #### this is for 0d01df
+        #self._absorption = 0.0814
+        #### this is for lambertian
+        self._absorption = 0.355
 
     def diffuse(self, photons):
         # remove photons reflected at the entry surface (air -> acrylic)
@@ -373,6 +430,10 @@ class Diffuser:
         theta = scattering.get_scattering_theta(self._g, size)
         block_size = 1024  # max
         grid_size = int(math.ceil(size / block_size))
+#        print(size)
+#        old_x = cp.copy(photons.ez_x
+#        old_y = cp.copy(photons.ez_y)
+#        old_z = cp.copy(photons.ez_z)
         scattering.scatter(
             (grid_size,),
             (block_size,),

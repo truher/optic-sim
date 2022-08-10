@@ -17,6 +17,7 @@ class ResultStage:
         self._histogram_r_x = stats_cuda.Histogram()
         self._histogram_r_y = stats_cuda.Histogram()
         self._histogram_ez_phi = stats_cuda.Histogram()
+        self._histogram_ez_theta_unweighted = stats_cuda.Histogram()
         self._histogram_ez_theta_weighted = stats_cuda.Histogram()
         self._histogram_ez_theta_radiance = stats_cuda.Histogram()
         # radiance w/sr/m2 by x,y,theta,phi
@@ -32,8 +33,10 @@ class ResultStage:
         self._box = [-size_m / 2, size_m / 2, -size_m / 2, size_m / 2, height_m]
         self._box_color = 0x808080
         # to magnify narrow distributions
-        self._theta_min = 0
-        self._theta_max = np.pi
+        #self._theta_min = 0
+        self._theta_min = np.pi/16
+        #self._theta_max = np.pi
+        self._theta_max = 15*np.pi/16
 
 
 class SimulationResult:
@@ -48,22 +51,24 @@ class SimulationResult:
         #self._source_stage._theta_max = np.pi / 2
 
         # photons at the top of the light box
-        self._box_stage = ResultStage("Lightbox", 0.04, 0.04)
+        #self._box_stage = ResultStage("Lightbox", 0.04, 0.04)
+        self._box_stage = ResultStage("Lightbox", 0.001, 0.001)
         #self._box_stage._theta_max = np.pi / 2
 
         # photons scattered by the diffuser
-        self._diffuser_stage = ResultStage("Diffuser", 0.04, 0.04)
+        #self._diffuser_stage = ResultStage("Diffuser", 0.04, 0.04)
+        self._diffuser_stage = ResultStage("Diffuser", 0.001, 0.001)
 
         # photons indicent at the reflector
         # TODO: make reflector distance a parameter
         # a reasonable min is 1m, max is 10m (actual max is 16m)
         self._outbound_stage = ResultStage("Outbound", 0.1, 10)
         # a very narrow beam arrives at the reflector
-        self._outbound_stage._theta_max = 0.01 * np.pi
+        #self._outbound_stage._theta_max = 0.01 * np.pi
 
         # photons reflected by the reflector
         self._inbound_stage = ResultStage("Inbound", 0.1, 10)
-        self._inbound_stage._theta_min = 0.9 * np.pi
+        #self._inbound_stage._theta_min = 0.9 * np.pi
 
         # photons arriving at the camera plane
         # camera height is the same as the diffuser

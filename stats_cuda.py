@@ -3,6 +3,7 @@ import numpy as np
 import math
 import scipy.constants
 from cupyx import jit  # type:ignore
+import scattering
 
 
 class Histogram:
@@ -19,6 +20,7 @@ class Histogram:
         else:
             self._hist += hist
 
+# only useful for small runs since it remembers everything
 class Scatter:
     def __init__(self):
         self._x = None
@@ -30,15 +32,24 @@ class Scatter:
     def add(self, x, y):
         if self._x is None:
             self._x = x
-        else:
-            self._x = np.concatenate(self._x, x)
+# for now just disable the infinite memory part
+#        else:
+#            self._x = cp.concatenate((self._x, x))
         if self._y is None:
             self._y = y
-        else:
-            self._y = np.concatenate(self._y, y)
+#        else:
+#            self._y = cp.concatenate((self._y, y))
 
 def histogram(photon_batch, stage):
     """Make and store a set of histograms."""
+
+    ###############
+    # first, rotate all the photons around y, to avoid the pole
+    ###############
+    scattering.do_avoid_pole(photon_batch, 1)
+
+
+
     # TODO: do bounds automatically
 
     neighborhood = stage._size_m
@@ -125,6 +136,39 @@ def histogram(photon_batch, stage):
         stage._histogram_ez_phi,
     )
 
+############
+############
+############
+# i think the bin size is what's confusing me?
+############
+############
+############
+    one_histogram_theta(
+        grid_size,
+        block_size,
+        bins,
+        size,
+        photon_batch.alive,
+        photon_batch.wavelength_nm,
+        photon_batch.ez_z,
+        photon_batch.photons_per_bundle,
+        theta_min,
+        theta_max,
+        "Radiant Intensity",
+        r"Polar angle theta $\mathregular{(radians)}$",
+        r"Radiant Intensity $\mathregular{(W/sr)}$",
+        np.float32(1),
+        photon_batch.duration_s,
+        stage._histogram_ez_theta_unweighted,
+    )
+
+    print("foo0")
+    import matplotlib.pyplot as plt
+    h,b = cp.histogram(cp.arccos(photon_batch.ez_z), 100)
+    fig = plt.figure(figsize=[15, 12])
+    ax = plt.subplot(projection='polar')
+    plt.plot(((b[:-1]+b[1:])/2).get(),h.get())
+
     bin_edges = np.linspace(theta_min, theta_max, bins + 1)
     bin_area_sr = (np.cos(bin_edges[:-1]) - np.cos(bin_edges[1:])) * 2 * np.pi
     one_histogram_theta(
@@ -147,7 +191,13 @@ def histogram(photon_batch, stage):
     )
 
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    projected_area_m2 = (y_max - y_min) * (x_max - x_min) * np.abs(np.cos(bin_centers))
+    ###############
+    ###############
+    # because the axes are rotated the projected area also needs to be rotated, i.e. sin instead of cos
+    #projected_area_m2 = (y_max - y_min) * (x_max - x_min) * np.abs(np.cos(bin_centers))
+    projected_area_m2 = (y_max - y_min) * (x_max - x_min) * np.abs(np.sin(bin_centers))
+    ###############
+    ###############
     bin_area_sr_m2 = (
         (np.cos(bin_edges[:-1]) - np.cos(bin_edges[1:])) * 2 * np.pi * projected_area_m2
     )
@@ -189,10 +239,15 @@ def histogram(photon_batch, stage):
                  "Y (m)",
                  stage._histogram_4d_count)
     scatterplot(photon_batch,
-                 "theta vs y",
-                 "y",
+                 "theta vs x",
+                 "x",
                  "theta",
                  stage._scatter)
+
+    ###############
+    # now rotate the input back where it was
+    ###############
+    scattering.do_avoid_pole(photon_batch, -1)
 
 def counter(photons,
                  x_min,
@@ -212,8 +267,9 @@ def counter(photons,
 
     (ct_per_bin, edges) = cp.histogramdd(
         points,
-        bins=(16,4,16,4),
-        range = ((x_min,x_max),(y_min,y_max),(0,np.pi/2),(-np.pi,np.pi)),
+        bins=(27,27,27,54),
+        #bins=(18,18,16,32),
+        range = ((x_min,x_max),(y_min,y_max),(0,np.pi),(-np.pi,np.pi)),
         weights=photons.alive)
 
     histogram_output._bin_edges = edges
@@ -228,9 +284,21 @@ def scatterplot(photons,
                 xlabel,
                 ylabel,
                 scatter_output):
+    # just retain a window in x
 
-    x = photons.r_y
+    #window_min = -0.001
+    #window_max = 0.001
+    window_min = 0.005
+    window_max = 0.010
+
+    x = photons.r_x
+    x = cp.compress(
+        cp.logical_and( cp.logical_and( photons.alive, photons.r_y < window_max), photons.r_y > window_min),
+        x, axis=0)
     y = cp.arccos(photons.ez_z)
+    y = cp.compress(
+        cp.logical_and( cp.logical_and( photons.alive, photons.r_y < window_max), photons.r_y > window_min),
+        y, axis=0)
     scatter_output.add(x,y)
 
 def histogram_4d(photons,
@@ -242,6 +310,7 @@ def histogram_4d(photons,
                  xlabel,
                  ylabel,
                  histogram_output):
+
 
     points = (
         photons.r_x,
@@ -257,35 +326,40 @@ def histogram_4d(photons,
     # joules
     (energy_per_bin_j, edges) = cp.histogramdd(
         points,
-        bins=(16,4,16,4),
-        range = ((x_min,x_max),(y_min,y_max),(0,np.pi/2),(-np.pi,np.pi)),
+        bins=(27,27,27,54),
+###########
+# avoid the poles
+###########
+        #range = ((x_min,x_max),(y_min,y_max),(0,np.pi),(-np.pi,np.pi)),
+        range = ((x_min,x_max),(y_min,y_max),(np.pi/16,15*np.pi/16),(-np.pi,np.pi)),
         weights=photons.alive * energy_per_bundle_j)
 
-    print(f"energy_per_bin_j {energy_per_bin_j}")
-    print(f"sum over sphere {cp.sum(energy_per_bin_j, axis=(2,3))}")
-    print(f"sum over area {cp.sum(energy_per_bin_j, axis=(0,1))}")
-    print(f"sum over phi and x {cp.sum(energy_per_bin_j, axis=(0,3))}")
-    print(f"edges {edges}")
+
+#    print(f"energy_per_bin_j {energy_per_bin_j}")
+#    print(f"sum over sphere {cp.sum(energy_per_bin_j, axis=(2,3))}")
+#    print(f"sum over area {cp.sum(energy_per_bin_j, axis=(0,1))}")
+#    print(f"sum over phi and x {cp.sum(energy_per_bin_j, axis=(0,3))}")
+#    print(f"edges {edges}")
 
     # would this be better as a constant?
     bin_area_m2 = cp.outer(edges[0][1:] - edges[0][:-1],
                            edges[1][1:] - edges[1][:-1])
 
-    print(f"bin_area_m2 {bin_area_m2}")
-    print(f"bin_area_m2 shape {bin_area_m2.shape}")
+#    print(f"bin_area_m2 {bin_area_m2}")
+#    print(f"bin_area_m2 shape {bin_area_m2.shape}")
 
     bin_area_m2_stretched = bin_area_m2[:,:,None,None]
-    print(f"bin_area_m2_stretched {bin_area_m2_stretched}")
-    print(f"bin_area_m2_stretched.shape {bin_area_m2_stretched.shape}")
+#    print(f"bin_area_m2_stretched {bin_area_m2_stretched}")
+#    print(f"bin_area_m2_stretched.shape {bin_area_m2_stretched.shape}")
 
     bin_area_sr = cp.outer(cp.cos(edges[2][:-1]) - cp.cos(edges[2][1:]),
                            edges[3][1:] - edges[3][:-1])
-    print(f"bin_area_sr.shape {bin_area_sr.shape}")
-    print(f"bin_area_sr {bin_area_sr}")
+#    print(f"bin_area_sr.shape {bin_area_sr.shape}")
+#    print(f"bin_area_sr {bin_area_sr}")
 
     bin_area_sr_stretched = bin_area_sr[None,None,:,:]
-    print(f"bin_area_sr_stretched {bin_area_sr_stretched}")
-    print(f"bin_area_sr_stretched.shape {bin_area_sr_stretched.shape}")
+#    print(f"bin_area_sr_stretched {bin_area_sr_stretched}")
+#    print(f"bin_area_sr_stretched.shape {bin_area_sr_stretched.shape}")
 
     power_per_bin_w = energy_per_bin_j/photons.duration_s
 # the bin area is the problem, duh
@@ -294,14 +368,18 @@ def histogram_4d(photons,
     # whoops, radiance needs *projected* bin area
     theta_bin_centers = (edges[2][:-1] + edges[2][1:]) / 2
     theta_bin_centers_stretched = theta_bin_centers[None,None,:,None]
-    projected_area_factor = np.abs(np.cos(theta_bin_centers_stretched))
+    ###############
+    ###############
+    # because the axes are rotated the projected area also needs to be rotated, i.e. sin instead of cos
+    #projected_area_factor = np.abs(np.cos(theta_bin_centers_stretched))
+    projected_area_factor = np.abs(np.sin(theta_bin_centers_stretched))
 
-    print(f"projected_area_factor {projected_area_factor}")
-    print(f"projected_area_factor.shape {projected_area_factor.shape}")
+#    print(f"projected_area_factor {projected_area_factor}")
+#    print(f"projected_area_factor.shape {projected_area_factor.shape}")
 
     radiance_w_sr_m2 = intensity_w_sr / (bin_area_m2_stretched * projected_area_factor)
 
-    print(f"radiance_w_sr_m2 {radiance_w_sr_m2}")
+#    print(f"radiance_w_sr_m2 {radiance_w_sr_m2}")
 
     # TODO: the bin edges may not be the same from batch to batch
     histogram_output._bin_edges = edges
@@ -388,13 +466,19 @@ def _histogram(
     for i in range(tid, size, ntid):
         # if alive[i]:
         mapped_data = dim_1[i]
-        bucket_idx = int((mapped_data - min_value) // bin_width)
-        bucket_idx = int(min(max(bucket_idx, 0), 127))  # must match above
+        #################
+        # just ignore out of bounds for now
+        #bucket_idx = int((mapped_data - min_value) // bin_width)
+        raw_bucket_idx = int((mapped_data - min_value) // bin_width)
+        bucket_idx = int(min(max(raw_bucket_idx, 0), 127))  # must match above
 
         wavelength_m = wavelength_nm[i] * 1e-9
         frequency_hz = scipy.constants.c / wavelength_m
         energy_per_photon_j = scipy.constants.h * frequency_hz
         energy_per_bundle_j = energy_per_photon_j * photons_per_bundle
+
+        energy_per_bundle_j *= raw_bucket_idx >= 0
+        energy_per_bundle_j *= raw_bucket_idx <= 127
 
         # histogram adds up whatever the value is (e.g. joules)
         jit.atomic_add(block_histogram, bucket_idx, alive[i] * energy_per_bundle_j)
@@ -480,13 +564,18 @@ def _histogram_phi(
     for i in range(tid, size, ntid):
         # if alive[i]:
         mapped_data = cp.arctan2(dim_2[i], dim_1[i])
-        bucket_idx = int((mapped_data - min_value) // bin_width)
-        bucket_idx = int(min(max(bucket_idx, 0), 127))  # must match above
+        raw_bucket_idx = int((mapped_data - min_value) // bin_width)
+        #################
+        # just ignore out of bounds for now
+        #bucket_idx = int(min(max(bucket_idx, 0), 127))  # must match above
+        bucket_idx = int(min(max(raw_bucket_idx, 0), 127))  # must match above
 
         wavelength_m = wavelength_nm[i] * 1e-9
         frequency_hz = scipy.constants.c / wavelength_m
         energy_per_photon_j = scipy.constants.h * frequency_hz
         energy_per_bundle_j = energy_per_photon_j * photons_per_bundle
+        energy_per_bundle_j *= raw_bucket_idx >= 0
+        energy_per_bundle_j *= raw_bucket_idx <= 127
 
         # histogram adds up whatever the value is (e.g. joules)
         jit.atomic_add(block_histogram, bucket_idx, alive[i] * energy_per_bundle_j)
@@ -533,7 +622,17 @@ def one_histogram_theta(
     )
 
     histogram_output._bin_edges = np.linspace(dim_min, dim_max, bins + 1)
+###################
+###################
+###################
     histogram_output.add(h.get() / (bin_area * duration_s))
+###################
+###################
+###################
+#    histogram_output.add(h.get() / (duration_s))
+###################
+###################
+###################
     histogram_output._title = title
     histogram_output._xlabel = xlabel
     histogram_output._ylabel = ylabel
@@ -568,13 +667,19 @@ def _histogram_theta(
     for i in range(tid, size, ntid):
         # if alive[i]:
         mapped_data = cp.arccos(dim_1[i])
-        bucket_idx = int((mapped_data - min_value) // bin_width)
-        bucket_idx = int(min(max(bucket_idx, 0), 127))  # must match above
+        #################
+        # just ignore out of bounds for now
+        #bucket_idx = int((mapped_data - min_value) // bin_width)
+        raw_bucket_idx = int((mapped_data - min_value) // bin_width)
+        bucket_idx = int(min(max(raw_bucket_idx, 0), 127))  # must match above
 
         wavelength_m = wavelength_nm[i] * 1e-9
         frequency_hz = scipy.constants.c / wavelength_m
         energy_per_photon_j = scipy.constants.h * frequency_hz
         energy_per_bundle_j = energy_per_photon_j * photons_per_bundle
+
+        energy_per_bundle_j *= raw_bucket_idx >= 0
+        energy_per_bundle_j *= raw_bucket_idx <= 127
 
         # histogram adds up whatever the value is (e.g. joules)
         jit.atomic_add(block_histogram, bucket_idx, alive[i] * energy_per_bundle_j)

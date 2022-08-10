@@ -47,7 +47,8 @@ class Simulator:
         # duration of the strobe, used to calculate power
         duration_s = 0.001
 
-        source = optics_cuda.MonochromaticLambertianSource(
+        #source = optics_cuda.MonochromaticLambertianSource(
+        source = optics_cuda.FatPencil(
             self._results._source_stage._size_m,
             self._results._source_stage._size_m,
             source_wavelength_nm,
@@ -59,7 +60,8 @@ class Simulator:
         self.record_results(self._results._source_stage, photons)
 
         # propagate through the reflective light box
-        lightbox = optics_cuda.Lightbox(
+        #lightbox = optics_cuda.Lightbox(
+        lightbox = optics_cuda.SimplerLightbox(
             height=self._results._box_stage._height_m,
             size=self._results._box_stage._size_m,
         )
@@ -72,20 +74,29 @@ class Simulator:
         diffuser.diffuse(photons)
         self.record_results(self._results._diffuser_stage, photons)
 
-#
-#
-#
-#
-#
-#
-        return
-#
-#
-#
-#
-#
-#
+# make a different plot
+        print("hack0")
+        import matplotlib.pyplot as plt
+        h,b = cp.histogram(cp.arccos(photons.ez_z), 100)
+        fig = plt.figure(figsize=[15, 12])
+        ax = plt.subplot(projection='polar')
+        plt.plot(((b[:-1]+b[1:])/2).get(),h.get())
 
+
+####
+####
+####
+####
+####
+####
+        return
+
+####
+####
+####
+####
+####
+####
         # propagate to the reflector and eliminate photons that miss it
         optics_cuda.propagate_to_reflector(
             photons, location=self._results._outbound_stage._height_m

@@ -20,7 +20,10 @@ def summary(stage):
 def plot_polar_histogram(data: stats_cuda.Histogram):
     fig = plt.figure(figsize=[15, 12])
     axes = plt.subplot(projection="polar")
-    axes.set_theta_zero_location("N")
+#################
+# rotated
+#################
+    #axes.set_theta_zero_location("N")
     # mirror the data so it looks nice
     axes.plot(
         (data._bin_edges[1:] + data._bin_edges[:-1]) / 2,
@@ -28,12 +31,15 @@ def plot_polar_histogram(data: stats_cuda.Histogram):
         color="blue",
         snap=False,
     )
-    axes.plot(
-        -(data._bin_edges[1:] + data._bin_edges[:-1]) / 2,
-        data._hist,
-        color="blue",
-        snap=False,
-    )
+#################
+# rotated
+#################
+#    axes.plot(
+#        -(data._bin_edges[1:] + data._bin_edges[:-1]) / 2,
+#        data._hist,
+#        color="blue",
+#        snap=False,
+#    )
     axes.set_title(data._title, fontsize=14, fontweight="black")
     axes.set_xlabel(data._xlabel, fontsize=14)
     axes.set_ylabel(data._ylabel, fontsize=14)
@@ -54,10 +60,11 @@ def plot_histogram_4d(data: stats_cuda.Histogram):
     radiance_w_sr_m2 = data._hist
 
     #max_radiance_w_sr_m2 = cp.amax(radiance_w_sr_m2, axis=(2,3))
-    max_radiance_w_sr_m2 = cp.sum(radiance_w_sr_m2, axis=(2,3))
+    max_radiance_w_sr_m2 = cp.amax(radiance_w_sr_m2, axis=(2,3))
+    #max_radiance_w_sr_m2 = cp.sum(radiance_w_sr_m2, axis=(2,3))
 
     fig=plt.figure(figsize=[15,12])
-    plt.imshow(max_radiance_w_sr_m2.get(), vmin=0,
+    plt.imshow(cp.transpose(max_radiance_w_sr_m2).get(), vmin=0,
                extent=(edges[0][0].item(), edges[0][-1].item(),
                        edges[1][0].item(), edges[1][-1].item())) 
     plt.title(data._title, fontsize=14, fontweight="black")
@@ -66,10 +73,35 @@ def plot_histogram_4d(data: stats_cuda.Histogram):
     plt.colorbar()
     plt.show()
 
+    # so i could just pick, say, 9 areas and make polars for each?
+    # lets start with the corner.
+    theta_x = (data._bin_edges[2][1:] + data._bin_edges[2][:-1]) / 2
+    fig = plt.figure(figsize=[15, 12])
+
+    N = 3
+    for xplot in range(N):
+        for yplot in range(N):
+            xidx = int(math.floor((xplot * 2 + 1) * data._hist.shape[0]/(N*2)))
+            yidx = int(math.floor((yplot * 2 + 1) * data._hist.shape[1]/(N*2)))
+            theta_phi = data._hist[xidx, yidx, :, :]
+            theta_sum_phi = cp.sum(theta_phi, axis=1)
+            axes = plt.subplot(N, N, (yplot * N + xplot) + 1, projection='polar')
+            axes.plot(
+                theta_x.get(),
+                theta_sum_phi.get(),
+                color="blue",
+                snap=False,
+            )
+    plt.show()
+    
+
 
 def plot_scatter(data):
     fig=plt.figure(figsize=[15,12])
     plt.plot(data._x.get(), data._y.get(), ',')
+    plt.title(data._title, fontsize=14, fontweight="black")
+    plt.xlabel(data._xlabel, fontsize=14)
+    plt.ylabel(data._ylabel, fontsize=14)
     plt.show()
 
 
@@ -77,8 +109,10 @@ def plot_all_histograms(stage):
     plot_histogram_data(stage._histogram_r_x)
     plot_histogram_data(stage._histogram_r_y)
     plot_histogram_data(stage._histogram_ez_phi)
+    plot_histogram_data(stage._histogram_ez_theta_unweighted)
     plot_histogram_data(stage._histogram_ez_theta_weighted)
     plot_histogram_data(stage._histogram_ez_theta_radiance)
+    plot_polar_histogram(stage._histogram_ez_theta_unweighted)
     plot_polar_histogram(stage._histogram_ez_theta_weighted)
     plot_polar_histogram(stage._histogram_ez_theta_radiance)
     plot_histogram_4d(stage._histogram_4d_radiance)
