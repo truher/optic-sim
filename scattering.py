@@ -7,10 +7,12 @@ import stats_cuda
 from scipy.stats import norm
 from abc import ABC, abstractmethod
 
+
 class Scattering(ABC):
     @abstractmethod
     def get_scattering_theta(self, size: np.int32) -> cp.ndarray:
         pass
+
 
 class HenyeyGreensteinScattering(Scattering):
     def __init__(self, g: np.float32):
@@ -19,7 +21,9 @@ class HenyeyGreensteinScattering(Scattering):
 
     def get_scattering_theta(self, size: np.int32) -> cp.ndarray:
         random_input = self._g * 2 * self._rng.random(size, dtype=np.float32)
-        HenyeyGreensteinScattering._henyey_loop((128,), (1024,), (random_input, self._g, size))
+        HenyeyGreensteinScattering._henyey_loop(
+            (128,), (1024,), (random_input, self._g, size)
+        )
         return random_input
 
     @staticmethod
@@ -40,15 +44,17 @@ class HenyeyGreensteinScattering(Scattering):
 
 
 class LambertianScattering(Scattering):
-    """ Approximately right for Edmund white glass or Acrylite wd008. """
+    """Approximately right for Edmund white glass or Acrylite wd008."""
+
     def __init__(self):
         self._rng = cp.random.default_rng()
 
     def get_scattering_theta(self, size: np.int32) -> cp.ndarray:
         return cp.arccos(2 * self._rng.random(size, dtype=np.float32) - 1.0) / 2
 
+
 class AcryliteScattering_0d010(Scattering):
-    """ Generate scattering angles that result in intensity distribution
+    """Generate scattering angles that result in intensity distribution
     that matches the Thor shape.  A good match is two gaussians, one one-third
     the height and two times the width of the other, plus a small constant.
 
@@ -57,35 +63,40 @@ class AcryliteScattering_0d010(Scattering):
     compared to the *input* but i think that's insane, everybody else measures
     the shape of the output independent of the input, so i'll do it that way.
     """
+
     def __init__(self):
-        mu = 0 # mean is normal
+        mu = 0  # mean is normal
         sigma_1_rad = 17.25 * np.pi / 180
         sigma_2_rad = 34.5 * np.pi / 180
-        a_1 = 0.75 # peak
-        a_2 = 0.25 # tails
-        a_3 = 0.008 # Thor data shows this
+        a_1 = 0.75  # peak
+        a_2 = 0.25  # tails
+        a_3 = 0.008  # Thor data shows this
         a_1_actually = sigma_1_rad * np.sqrt(2 * np.pi) * a_1
         a_2_actually = sigma_2_rad * np.sqrt(2 * np.pi) * a_2
 
         # make a distribution
-        self.pdf_x_theta_rad = cp.linspace(0, np.pi/2, 512)
+        self.pdf_x_theta_rad = cp.linspace(0, np.pi / 2, 512)
 
         gaussian_1 = cp.array(
-            a_1_actually * norm.pdf(self.pdf_x_theta_rad.get(), scale = sigma_1_rad))
+            a_1_actually * norm.pdf(self.pdf_x_theta_rad.get(), scale=sigma_1_rad)
+        )
         gaussian_2 = cp.array(
-            a_2_actually * norm.pdf(self.pdf_x_theta_rad.get(), scale = sigma_2_rad))
+            a_2_actually * norm.pdf(self.pdf_x_theta_rad.get(), scale=sigma_2_rad)
+        )
         # this is the target intensity distribution.
-        intensity_distribution = ((gaussian_1 + gaussian_2) * (1-a_3) + a_3)
+        intensity_distribution = (gaussian_1 + gaussian_2) * (1 - a_3) + a_3
         sin_term = cp.sin(self.pdf_x_theta_rad)
         # TODO figure out the cos^5 schlick thing
         # note the schlick term is relative to the surface not the ray.
         schlick_term = 1 - (1 - cp.cos(self.pdf_x_theta_rad)) ** 5
-        
+
         self.angle_distribution = intensity_distribution * sin_term * schlick_term
 
     def get_scattering_theta(self, size: int) -> cp.ndarray:
         """Does not account for absorption.  Please remove TK% of the rows returned."""
-        return stats_cuda.sample_pdf(size, self.pdf_x_theta_rad, self.angle_distribution)
+        return stats_cuda.sample_pdf(
+            size, self.pdf_x_theta_rad, self.angle_distribution
+        )
 
 
 # SCATTERING PHI
@@ -176,6 +187,7 @@ def scatter(
         (ux, uy, uz) = do_rotation(ux, uy, uz, vx[i], vy[i], vz[i], phi[i])
         # then rotate the photon around that perpendicular
         (vx[i], vy[i], vz[i]) = do_rotation(vx[i], vy[i], vz[i], ux, uy, uz, theta[i])
+
 
 def get_phi(y: cp.ndarray, x: cp.ndarray) -> cp.ndarray:
     return cp.arctan2(y, x)

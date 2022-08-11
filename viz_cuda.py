@@ -43,18 +43,25 @@ def plot_histogram_data(data: stats_cuda.Histogram):
     axes.set_ylabel(data._ylabel, fontsize=14)
     plt.show()
 
+
 def plot_histogram_4d(data: stats_cuda.Histogram):
     edges = data._bin_edges
     radiance_w_sr_m2 = data._hist
 
-    #max_radiance_w_sr_m2 = cp.amax(radiance_w_sr_m2, axis=(2,3))
-    max_radiance_w_sr_m2 = cp.amax(radiance_w_sr_m2, axis=(2,3))
-    #max_radiance_w_sr_m2 = cp.sum(radiance_w_sr_m2, axis=(2,3))
+    # max_radiance_w_sr_m2 = cp.amax(radiance_w_sr_m2, axis=(2,3))
+    max_radiance_w_sr_m2 = cp.amax(radiance_w_sr_m2, axis=(2, 3))
+    # max_radiance_w_sr_m2 = cp.sum(radiance_w_sr_m2, axis=(2,3))
 
-    fig=plt.figure(figsize=[15,12])
-    plt.imshow(cp.transpose(max_radiance_w_sr_m2).get(), #vmin=0,
-               extent=(edges[0][0].item(), edges[0][-1].item(),
-                       edges[1][0].item(), edges[1][-1].item())) 
+    fig = plt.figure(figsize=[15, 12])
+    plt.imshow(
+        cp.transpose(max_radiance_w_sr_m2).get(),  # vmin=0,
+        extent=(
+            edges[0][0].item(),
+            edges[0][-1].item(),
+            edges[1][0].item(),
+            edges[1][-1].item(),
+        ),
+    )
     plt.title(data._title, fontsize=14, fontweight="black")
     plt.xlabel(data._xlabel, fontsize=14)
     plt.ylabel(data._ylabel, fontsize=14)
@@ -69,13 +76,13 @@ def plot_histogram_4d(data: stats_cuda.Histogram):
     N = 3
     for xplot in range(N):
         for yplot in range(N):
-            xidx = int(math.floor((xplot * 2 + 1) * data._hist.shape[0]/(N*2)))
-            yidx = int(math.floor((yplot * 2 + 1) * data._hist.shape[1]/(N*2)))
+            xidx = int(math.floor((xplot * 2 + 1) * data._hist.shape[0] / (N * 2)))
+            yidx = int(math.floor((yplot * 2 + 1) * data._hist.shape[1] / (N * 2)))
             theta_phi = data._hist[xidx, yidx, :, :]
             # TODO: the "sum" here is wrong, need to divide by
             # something like total sr?  i dunno.
             theta_sum_phi = cp.sum(theta_phi, axis=1)
-            axes = plt.subplot(N, N, (yplot * N + xplot) + 1, projection='polar')
+            axes = plt.subplot(N, N, (yplot * N + xplot) + 1, projection="polar")
             axes.plot(
                 theta_x.get(),
                 theta_sum_phi.get(),
@@ -83,12 +90,11 @@ def plot_histogram_4d(data: stats_cuda.Histogram):
                 snap=False,
             )
     plt.show()
-    
 
 
 def plot_scatter(data):
-    fig=plt.figure(figsize=[15,12])
-    plt.plot(data._x.get(), data._y.get(), ',', snap=False)
+    fig = plt.figure(figsize=[15, 12])
+    plt.plot(data._x.get(), data._y.get(), ",", snap=False)
     plt.title(data._title, fontsize=14, fontweight="black")
     plt.xlabel(data._xlabel, fontsize=14)
     plt.ylabel(data._ylabel, fontsize=14)

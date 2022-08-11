@@ -38,7 +38,7 @@ class Photons:
     def remove(self, p):
         """Remove photons with (scalar) probability p."""
         # TODO: do this without allocating a giant vector
-        if p < 0.001: # shortcut, do i need this?
+        if p < 0.001:  # shortcut, do i need this?
             return
         cp.logical_and(self.alive, cp.random.random(self.size()) > p, out=self.alive)
 
@@ -54,28 +54,27 @@ class Photons:
         return cp.compress(alive, x, axis=0)
 
     def debug(self, source_size_m):
-        # return
         energy_j = self.energy_j()
-        #print(f"photon batch energy joules: {energy_j:.3e}")
+        print(f"photon batch energy joules: {energy_j:.3e}")
         power_w = self.power_w()
-        #print(f"photon batch power watts: {power_w:.3e}")
+        print(f"photon batch power watts: {power_w:.3e}")
         emitter_area_m2 = source_size_m * source_size_m
-        #print(f"emitter area m^2: {emitter_area_m2:.3e}")
+        print(f"emitter area m^2: {emitter_area_m2:.3e}")
         radiosity_w_m2 = power_w / emitter_area_m2
-        #print(f"batch radiosity w/m^2: {radiosity_w_m2:.3e}")
+        print(f"batch radiosity w/m^2: {radiosity_w_m2:.3e}")
 
     def sample(self):
         """Take every N-th for plotting 1024.  Returns
         a type the plotter likes, which is two numpy (N,3) vectors"""
         size = self.size()
         alive_count = self.count_alive()
-        
+
         alive_ratio = alive_count / size
         # block_size = 64 # 0.45 s
         block_size = 4  # more waves = less sampling
         # choose extra to compensate for deadness
         # allow approximate return count
-        
+
         grid_size = int(math.ceil(16 / alive_ratio))
         selection_size = min(size, grid_size * block_size)
         scale = np.int32(size // selection_size)
@@ -153,7 +152,10 @@ class Source(ABC):
 
 class PencilSource(Source):
     """Zero area zero divergence."""
-    def __init__(self, wavelength_nm: int, photons_per_bundle: float, duration_s: float):
+
+    def __init__(
+        self, wavelength_nm: int, photons_per_bundle: float, duration_s: float
+    ):
         self._wavelength_nm = wavelength_nm
         self._photons_per_bundle = photons_per_bundle
         self._duration_s = duration_s
@@ -175,6 +177,7 @@ class PencilSource(Source):
 
 class FatPencil(Source):
     """Finite area zero divergence."""
+
     def __init__(
         self,
         width_m: float,
@@ -296,7 +299,6 @@ class Lightbox:
     def propagate_without_kernel(self, photons: Photons) -> None:
         """Avoid conditionals and cuda kernels.  This ignores the
         xy position of the source, since it's small relative to the box."""
-      
 
         absorption = np.float32(0.1)  # polished metal inside
 
@@ -323,7 +325,7 @@ class Lightbox:
 
         total_reflection_count = reflection_count_x + reflection_count_y
         photon_survival = cp.power((1 - absorption), total_reflection_count)
-       
+
         photons.alive = cp.logical_and(
             photons.alive,
             cp.logical_and(
@@ -334,17 +336,15 @@ class Lightbox:
         )
 
 
-
-        
-
 def schlick_reflection(n_1: float, n_2: float, cos_theta_rad: cp.ndarray):
     """passing cos(theta) is more convenient
     This does not account for total internal reflection, so maybe only useful
     for rough surfaces.
     """
-    r_0 = ((n_1 - n_2)/(n_1 + n_2)) ** 2
+    r_0 = ((n_1 - n_2) / (n_1 + n_2)) ** 2
     r = r_0 + (1 - r_0) * (1 - cos_theta_rad) ** 5
     return r
+
 
 def schlick_reflection_with_tir(ni: float, nt: float, cosX: cp.ndarray):
     """ni = incident side, nt = transmitted side.
@@ -358,9 +358,9 @@ def schlick_reflection_with_tir(ni: float, nt: float, cosX: cp.ndarray):
     large, so maybe just use a bigger theta offset which is basicaly the same
     as a lower n.
     """
-    r_0 = ((nt - ni)/(nt + ni)) ** 2
+    r_0 = ((nt - ni) / (nt + ni)) ** 2
     if ni > nt:
-        inv_eta = ni/nt
+        inv_eta = ni / nt
         sinT2 = inv_eta * inv_eta * (1 - cosX * cosX)
         sinT2 = cp.minimum(sinT2, 1)
         cosX = cp.sqrt(1 - sinT2)
@@ -377,14 +377,21 @@ class LambertianDiffuser:
 
     def __init__(self):
         self._scattering = scattering.LambertianScattering()
+        #### TODO what should this be?
         self._absorption = 0.355
-        
-# TODO: refactoring
+
+    # TODO: refactoring
     def diffuse(self, photons):
-###        photons.retain(1 - schlick_reflection(LambertianDiffuser.N_AIR,
-        photons.retain(1 - schlick_reflection_with_tir(LambertianDiffuser.N_AIR,
-###            LambertianDiffuser.N_ACRYLIC, photons.ez_z))
-            LambertianDiffuser.N_ACRYLIC_ROUGH, photons.ez_z))
+        ###        photons.retain(1 - schlick_reflection(LambertianDiffuser.N_AIR,
+        photons.retain(
+            1
+            - schlick_reflection_with_tir(
+                LambertianDiffuser.N_AIR,
+                ###            LambertianDiffuser.N_ACRYLIC, photons.ez_z))
+                LambertianDiffuser.N_ACRYLIC_ROUGH,
+                photons.ez_z,
+            )
+        )
 
         size = np.int32(photons.size())  # TODO eliminate this
         phi = scattering.get_scattering_phi(size)
@@ -400,10 +407,16 @@ class LambertianDiffuser:
         photons.remove(self._absorption)
 
         # remove photons reflected at the exit surface (acrylic -> air)
-###        photons.retain(1 - schlick_reflection(LambertianDiffuser.N_ACRYLIC,
-###        photons.retain(1 - schlick_reflection_with_tir(LambertianDiffuser.N_ACRYLIC,
-        photons.retain(1 - schlick_reflection_with_tir(LambertianDiffuser.N_ACRYLIC_ROUGH,
-            LambertianDiffuser.N_AIR, photons.ez_z))
+        ###        photons.retain(1 - schlick_reflection(LambertianDiffuser.N_ACRYLIC,
+        ###        photons.retain(1 - schlick_reflection_with_tir(LambertianDiffuser.N_ACRYLIC,
+        photons.retain(
+            1
+            - schlick_reflection_with_tir(
+                LambertianDiffuser.N_ACRYLIC_ROUGH,
+                LambertianDiffuser.N_AIR,
+                photons.ez_z,
+            )
+        )
         # remove wrong-way photons. they might come out again but it's ok to ignore.
         cp.logical_and(photons.alive, photons.ez_z > 0, out=photons.alive)
 
@@ -411,33 +424,32 @@ class LambertianDiffuser:
 class AcryliteDiffuser_0d010:
     """0D010 DF Acrylite Satinice 'optimum light diffusion' colorless.
 
-       Transmission is 84% for a normal pencil beam; some is absorbed
-       internally, some is reflected internally.  FWHM is 40 degrees.
-
-       ... or wd008 white, which is lambertian
+    Transmission is 84% for a normal pencil beam; some is absorbed
+    internally, some is reflected internally.  FWHM is 40 degrees.
     """
+
     N_AIR = 1.0
     N_ACRYLIC = 1.495
     N_ACRYLIC_ROUGH = 1.1
+
     def __init__(self):
         self._scattering = scattering.AcryliteScattering_0d010()
         # internal absorption, calibrated to 84% total transmission
         # for a pencil beam
-        #### this is for 0d01df
         self._absorption = 0.0814
-        #### this is for lambertian
-
-#### TODO what should this be?
-        #self._absorption = 0.355
-
-## TODO: expose the angle distribution for a graph
 
     def diffuse(self, photons):
         # remove photons reflected at the entry surface (air -> acrylic)
-###        photons.retain(1 - schlick_reflection(AcryliteDiffuser.N_AIR,
-        photons.retain(1 - schlick_reflection_with_tir(AcryliteDiffuser_0d010.N_AIR,
-###            AcryliteDiffuser.N_ACRYLIC, photons.ez_z))
-            AcryliteDiffuser_0d010.N_ACRYLIC_ROUGH, photons.ez_z))
+        ###        photons.retain(1 - schlick_reflection(AcryliteDiffuser.N_AIR,
+        photons.retain(
+            1
+            - schlick_reflection_with_tir(
+                AcryliteDiffuser_0d010.N_AIR,
+                ###            AcryliteDiffuser.N_ACRYLIC, photons.ez_z))
+                AcryliteDiffuser_0d010.N_ACRYLIC_ROUGH,
+                photons.ez_z,
+            )
+        )
 
         # adjust the angles
         size = np.int32(photons.size())  # TODO eliminate this
@@ -455,18 +467,20 @@ class AcryliteDiffuser_0d010:
         photons.remove(self._absorption)
 
         # remove photons reflected at the exit surface (acrylic -> air)
-###        photons.retain(1 - schlick_reflection(AcryliteDiffuser.N_ACRYLIC,
-        photons.retain(1 - schlick_reflection_with_tir(AcryliteDiffuser_0d010.N_ACRYLIC_ROUGH,
-            AcryliteDiffuser_0d010.N_AIR, photons.ez_z))
+        ###        photons.retain(1 - schlick_reflection(AcryliteDiffuser.N_ACRYLIC,
+        photons.retain(
+            1
+            - schlick_reflection_with_tir(
+                AcryliteDiffuser_0d010.N_ACRYLIC_ROUGH,
+                AcryliteDiffuser_0d010.N_AIR,
+                photons.ez_z,
+            )
+        )
         cp.logical_and(photons.alive, photons.ez_z > 0, out=photons.alive)
 
 
-
 class HenyeyGreensteinDiffuser:
-    """Something that changes photon direction.
-
-    Examples: diffuser, retroreflector.
-    """
+    """Uses the Henyey Greenstein model."""
 
     def __init__(self, g: float, absorption: float):
         """
@@ -494,18 +508,11 @@ class HenyeyGreensteinDiffuser:
         theta = self._scattering.get_scattering_theta(size)
         block_size = 1024  # max
         grid_size = int(math.ceil(size / block_size))
-#        print(size)
-#        old_x = cp.copy(photons.ez_x
-#        old_y = cp.copy(photons.ez_y)
-#        old_z = cp.copy(photons.ez_z)
         scattering.scatter(
             (grid_size,),
             (block_size,),
             (photons.ez_x, photons.ez_y, photons.ez_z, theta, phi, size),
         )
-
-
-#        cp.cuda.Device().synchronize()
 
 
 class ColorFilter:

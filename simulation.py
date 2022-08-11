@@ -22,10 +22,10 @@ class Simulator:
         self._results = results
         self._waves = waves
         self._bundles = bundles
-        self._bundle_size = bundle_size # TODO Actually use this?
+        self._bundle_size = bundle_size  # TODO Actually use this?
 
     def run_all_waves(self):
-        #for i in range(self._waves):
+        # for i in range(self._waves):
         for i in trange(self._waves):
             self.run()
 
@@ -48,7 +48,7 @@ class Simulator:
         duration_s = 0.001
 
         source = optics_cuda.MonochromaticLambertianSource(
-###        source = optics_cuda.FatPencil(
+            ###        source = optics_cuda.FatPencil(
             self._results._source_stage._size_m,
             self._results._source_stage._size_m,
             source_wavelength_nm,
@@ -56,55 +56,30 @@ class Simulator:
             duration_s,
         )
         photons = source.make_photons(self._bundles)
-        photons.debug(self._results._source_stage._size_m)
+        #photons.debug(self._results._source_stage._size_m)
         self.record_results(self._results._source_stage, photons)
 
-        # propagate through the reflective light box
+        # absorptive light box
+        # lightbox = optics_cuda.Iris(
+        # reflective light box
         lightbox = optics_cuda.Lightbox(
-#####        lightbox = optics_cuda.Iris(
             height=self._results._box_stage._height_m,
             size=self._results._box_stage._size_m,
         )
         lightbox.propagate_without_kernel(photons)
         self.record_results(self._results._box_stage, photons)
 
-        # diffuse through the diffuser
-####
-# 
-        #diffuser = optics_cuda.Diffuser(g=0.64, absorption=0.16)
+        # Henyey isn't a very good approximation.
+        # diffuser = optics_cuda.HenyeyGreensteinDiffuser(g=0.64, absorption=0.16)
+
+        # Lambertian corresponds to white glass or wd008
+        # diffuser = optics_cuda.LambertianDiffuser()
+
         diffuser = optics_cuda.AcryliteDiffuser_0d010()
 
-        # lambertian corresponds to white glass or wd008
-        # diffuser = optics_cuda.LambertianDiffuser()
         diffuser.diffuse(photons)
-# TODO: expose the angle distribution for a graph, i.e. make the
-# diffuser (and all the other operators) members of the simulator
-# rather than scoped to each run.
         self.record_results(self._results._diffuser_stage, photons)
 
-## make a different plot
-#        print("hack0")
-#        import matplotlib.pyplot as plt
-#        h,b = cp.histogram(cp.arccos(photons.ez_z), 100)
-#        fig = plt.figure(figsize=[15, 12])
-#        ax = plt.subplot(projection='polar')
-#        plt.plot(((b[:-1]+b[1:])/2).get(),h.get())
-
-
-####
-####
-####
-####
-####
-####
-#        return
-
-####
-####
-####
-####
-####
-####
         # propagate to the reflector and eliminate photons that miss it
         optics_cuda.propagate_to_reflector(
             photons, location=self._results._outbound_stage._height_m
@@ -128,11 +103,8 @@ class Simulator:
 
     def record_results(self, stage, photons):
         stage._photons_size += photons.count_alive()
-        #print(f"alive at {stage._label}: {stage._photons_size}")
         stage._photons_energy_j += photons.energy_j()
         stage._sample.add(photons.sample())
-        # stats_cuda.histogram(photons, stage, neighborhood = stage._size_m,
-        #    theta_min = stage._theta_min, theta_max = stage._theta_max)
         stats_cuda.histogram(photons, stage)
 
 

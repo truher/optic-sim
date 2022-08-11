@@ -20,6 +20,7 @@ class Histogram:
         else:
             self._hist += hist
 
+
 # only useful for small runs since it remembers everything
 class Scatter:
     def __init__(self):
@@ -32,13 +33,14 @@ class Scatter:
     def add(self, x, y):
         if self._x is None:
             self._x = x
-# for now just disable the infinite memory part
-#        else:
-#            self._x = cp.concatenate((self._x, x))
+        # for now just disable the infinite memory part
+        # else:
+        # self._x = cp.concatenate((self._x, x))
         if self._y is None:
             self._y = y
-#        else:
-#            self._y = cp.concatenate((self._y, y))
+        # else:
+        # self._y = cp.concatenate((self._y, y))
+
 
 def histogram(photon_batch, stage):
     """Make and store a set of histograms."""
@@ -127,13 +129,6 @@ def histogram(photon_batch, stage):
         stage._histogram_ez_phi,
     )
 
-############
-############
-############
-# i think the bin size is what's confusing me?
-############
-############
-############
     one_histogram_theta(
         grid_size,
         block_size,
@@ -152,13 +147,6 @@ def histogram(photon_batch, stage):
         photon_batch.duration_s,
         stage._histogram_ez_theta_count,
     )
-#
-#    print("foo0")
-#    import matplotlib.pyplot as plt
-#    h,b = cp.histogram(cp.arccos(photon_batch.ez_z), 100)
-#    fig = plt.figure(figsize=[15, 12])
-#    ax = plt.subplot(projection='polar')
-#    plt.plot(((b[:-1]+b[1:])/2).get(),h.get())
 
     bin_edges = np.linspace(theta_min, theta_max, bins + 1)
     bin_area_sr = (np.cos(bin_edges[:-1]) - np.cos(bin_edges[1:])) * 2 * np.pi
@@ -182,13 +170,7 @@ def histogram(photon_batch, stage):
     )
 
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    ###############
-    ###############
-    # because the axes are rotated the projected area also needs to be rotated, i.e. sin instead of cos
     projected_area_m2 = (y_max - y_min) * (x_max - x_min) * np.abs(np.cos(bin_centers))
-#    projected_area_m2 = (y_max - y_min) * (x_max - x_min) * np.abs(np.sin(bin_centers))
-    ###############
-    ###############
     bin_area_sr_m2 = (
         (np.cos(bin_edges[:-1]) - np.cos(bin_edges[1:])) * 2 * np.pi * projected_area_m2
     )
@@ -211,55 +193,52 @@ def histogram(photon_batch, stage):
         stage._histogram_ez_theta_radiance,
     )
 
-    histogram_4d(photon_batch,
-                 x_min,
-                 x_max,
-                 y_min,
-                 y_max,
-                 r"Maximum intensity $\mathregular{W/sr)}$",
-                 r"Maximum radiance $\mathregular{W/sr\, m^2)}$",
-                 "X (m)",
-                 "Y (m)",
-                 stage._histogram_4d_intensity,
-                 stage._histogram_4d_radiance)
-    counter(photon_batch,
-                 x_min,
-                 x_max,
-                 y_min,
-                 y_max,
-                 "Bundle count, unscaled",
-                 "X (m)",
-                 "Y (m)",
-                 stage._histogram_4d_count)
-    scatterplot(photon_batch,
-                 "count theta vs x",
-                 "x",
-                 "theta",
-                 stage._scatter)
+    histogram_4d(
+        photon_batch,
+        x_min,
+        x_max,
+        y_min,
+        y_max,
+        r"Maximum intensity $\mathregular{W/sr)}$",
+        r"Maximum radiance $\mathregular{W/sr\, m^2)}$",
+        "X (m)",
+        "Y (m)",
+        stage._histogram_4d_intensity,
+        stage._histogram_4d_radiance,
+    )
+    counter(
+        photon_batch,
+        x_min,
+        x_max,
+        y_min,
+        y_max,
+        "Bundle count, unscaled",
+        "X (m)",
+        "Y (m)",
+        stage._histogram_4d_count,
+    )
+    scatterplot(photon_batch, "count theta vs x", "x", "theta", stage._scatter)
+
 
 # TODO: this isn't very useful, get rid of it.
-def counter(photons,
-                 x_min,
-                 x_max,
-                 y_min,
-                 y_max,
-                 title,
-                 xlabel,
-                 ylabel,
-                 histogram_output):
+def counter(
+    photons, x_min, x_max, y_min, y_max, title, xlabel, ylabel, histogram_output
+):
 
     points = (
         photons.r_x,
         photons.r_y,
-        cp.arccos(photons.ez_z), # theta
-        cp.arctan2(photons.ez_y, photons.ez_x))  # phi
+        cp.arccos(photons.ez_z),  # theta
+        cp.arctan2(photons.ez_y, photons.ez_x),
+    )  # phi
 
     (ct_per_bin, edges) = cp.histogramdd(
         points,
-        bins=(27,27,27,18),
-        #bins=(18,18,16,32),
-        range = ((x_min,x_max),(y_min,y_max),(0,np.pi),(-np.pi,np.pi)),
-        weights=photons.alive)
+        bins=(27, 27, 27, 18),
+        # bins=(18,18,16,32),
+        range=((x_min, x_max), (y_min, y_max), (0, np.pi), (-np.pi, np.pi)),
+        weights=photons.alive,
+    )
 
     histogram_output._bin_edges = edges
     histogram_output.add(ct_per_bin)
@@ -268,51 +247,59 @@ def counter(photons,
     histogram_output._xlabel = xlabel
     histogram_output._ylabel = ylabel
 
-def scatterplot(photons,
-                title,
-                xlabel,
-                ylabel,
-                scatter_output):
+
+def scatterplot(photons, title, xlabel, ylabel, scatter_output):
     # just retain a window in x
 
-####
-# center
+    ####
+    # center
     window_min = -0.001
     window_max = 0.001
-    #window_min = 0.005
-    #window_max = 0.010
 
     x = photons.r_x
     x = cp.compress(
-        cp.logical_and( cp.logical_and( photons.alive, photons.r_y < window_max), photons.r_y > window_min),
-        x, axis=0)
+        cp.logical_and(
+            cp.logical_and(photons.alive, photons.r_y < window_max),
+            photons.r_y > window_min,
+        ),
+        x,
+        axis=0,
+    )
     y = cp.arccos(photons.ez_z)
     y = cp.compress(
-        cp.logical_and( cp.logical_and( photons.alive, photons.r_y < window_max), photons.r_y > window_min),
-        y, axis=0)
-    scatter_output.add(x,y)
-    scatter_output._title=title
-    scatter_output._xlabel=xlabel
-    scatter_output._ylabel=ylabel
+        cp.logical_and(
+            cp.logical_and(photons.alive, photons.r_y < window_max),
+            photons.r_y > window_min,
+        ),
+        y,
+        axis=0,
+    )
+    scatter_output.add(x, y)
+    scatter_output._title = title
+    scatter_output._xlabel = xlabel
+    scatter_output._ylabel = ylabel
 
-def histogram_4d(photons,
-                 x_min,
-                 x_max,
-                 y_min,
-                 y_max,
-                 intensity_title,
-                 radiance_title,
-                 xlabel,
-                 ylabel,
-                 intensity_histogram_output,
-                 radiance_histogram_output):
 
+def histogram_4d(
+    photons,
+    x_min,
+    x_max,
+    y_min,
+    y_max,
+    intensity_title,
+    radiance_title,
+    xlabel,
+    ylabel,
+    intensity_histogram_output,
+    radiance_histogram_output,
+):
 
     points = (
         photons.r_x,
         photons.r_y,
-        cp.arccos(photons.ez_z), # theta
-        cp.arctan2(photons.ez_y, photons.ez_x))  # phi
+        cp.arccos(photons.ez_z),  # theta
+        cp.arctan2(photons.ez_y, photons.ez_x),
+    )  # phi
 
     wavelength_m = photons.wavelength_nm * 1e-9
     frequency_hz = scipy.constants.c / wavelength_m
@@ -322,24 +309,30 @@ def histogram_4d(photons,
     # joules
     (energy_per_bin_j, edges) = cp.histogramdd(
         points,
-        bins=(27,27,27,18),
+        bins=(27, 27, 27, 18),
         # there's an intensity singularity at the pole, and a radiance
         # singularity at 90 degrees, so carve those points out
-        range = ((x_min,x_max),(y_min,y_max),(0.01,0.99*np.pi/2),(-np.pi,np.pi)),
-        weights=photons.alive * energy_per_bundle_j)
+        range=(
+            (x_min, x_max),
+            (y_min, y_max),
+            (0.01, 0.99 * np.pi / 2),
+            (-np.pi, np.pi),
+        ),
+        weights=photons.alive * energy_per_bundle_j,
+    )
 
     # would this be better as a constant?
-    bin_area_m2 = cp.outer(edges[0][1:] - edges[0][:-1],
-                           edges[1][1:] - edges[1][:-1])
+    bin_area_m2 = cp.outer(edges[0][1:] - edges[0][:-1], edges[1][1:] - edges[1][:-1])
 
-    bin_area_m2_stretched = bin_area_m2[:,:,None,None]
+    bin_area_m2_stretched = bin_area_m2[:, :, None, None]
 
-    bin_area_sr = cp.outer(cp.cos(edges[2][:-1]) - cp.cos(edges[2][1:]),
-                           edges[3][1:] - edges[3][:-1])
+    bin_area_sr = cp.outer(
+        cp.cos(edges[2][:-1]) - cp.cos(edges[2][1:]), edges[3][1:] - edges[3][:-1]
+    )
 
-    bin_area_sr_stretched = bin_area_sr[None,None,:,:]
+    bin_area_sr_stretched = bin_area_sr[None, None, :, :]
 
-    power_per_bin_w = energy_per_bin_j/photons.duration_s
+    power_per_bin_w = energy_per_bin_j / photons.duration_s
     intensity_w_sr = power_per_bin_w / bin_area_sr_stretched
 
     # TODO: the bin edges may not be the same from batch to batch
@@ -351,7 +344,7 @@ def histogram_4d(photons,
     intensity_histogram_output._ylabel = ylabel
 
     theta_bin_centers = (edges[2][:-1] + edges[2][1:]) / 2
-    theta_bin_centers_stretched = theta_bin_centers[None,None,:,None]
+    theta_bin_centers_stretched = theta_bin_centers[None, None, :, None]
 
     projected_area_factor = np.abs(np.cos(theta_bin_centers_stretched))
     radiance_w_sr_m2 = intensity_w_sr / (bin_area_m2_stretched * projected_area_factor)
@@ -437,7 +430,7 @@ def _histogram(
         mapped_data = dim_1[i]
         #################
         # just ignore out of bounds for now
-        #bucket_idx = int((mapped_data - min_value) // bin_width)
+        # bucket_idx = int((mapped_data - min_value) // bin_width)
         raw_bucket_idx = int((mapped_data - min_value) // bin_width)
         bucket_idx = int(min(max(raw_bucket_idx, 0), 127))  # must match above
 
@@ -536,7 +529,7 @@ def _histogram_phi(
         raw_bucket_idx = int((mapped_data - min_value) // bin_width)
         #################
         # just ignore out of bounds for now
-        #bucket_idx = int(min(max(bucket_idx, 0), 127))  # must match above
+        # bucket_idx = int(min(max(bucket_idx, 0), 127))  # must match above
         bucket_idx = int(min(max(raw_bucket_idx, 0), 127))  # must match above
 
         wavelength_m = wavelength_nm[i] * 1e-9
@@ -591,17 +584,7 @@ def one_histogram_theta(
     )
 
     histogram_output._bin_edges = np.linspace(dim_min, dim_max, bins + 1)
-###################
-###################
-###################
     histogram_output.add(h.get() / (bin_area * duration_s))
-###################
-###################
-###################
-#    histogram_output.add(h.get() / (duration_s))
-###################
-###################
-###################
     histogram_output._title = title
     histogram_output._xlabel = xlabel
     histogram_output._ylabel = ylabel
@@ -638,7 +621,7 @@ def _histogram_theta(
         mapped_data = cp.arccos(dim_1[i])
         #################
         # just ignore out of bounds for now
-        #bucket_idx = int((mapped_data - min_value) // bin_width)
+        # bucket_idx = int((mapped_data - min_value) // bin_width)
         raw_bucket_idx = int((mapped_data - min_value) // bin_width)
         bucket_idx = int(min(max(raw_bucket_idx, 0), 127))  # must match above
 
