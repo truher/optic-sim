@@ -17,9 +17,10 @@ class ResultStage:
         self._histogram_r_x = stats_cuda.Histogram()
         self._histogram_r_y = stats_cuda.Histogram()
         self._histogram_ez_phi = stats_cuda.Histogram()
-#        self._histogram_ez_theta_unweighted = stats_cuda.Histogram()
+        self._histogram_ez_theta_count = stats_cuda.Histogram()
         self._histogram_ez_theta_intensity = stats_cuda.Histogram()
         self._histogram_ez_theta_radiance = stats_cuda.Histogram()
+
         # intensity w/sr by x,y,theta,phi
         self._histogram_4d_intensity = stats_cuda.Histogram()
         # radiance w/sr/m2 by x,y,theta,phi

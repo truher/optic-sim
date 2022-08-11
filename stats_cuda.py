@@ -43,15 +43,6 @@ class Scatter:
 def histogram(photon_batch, stage):
     """Make and store a set of histograms."""
 
-    ###############
-    # first, rotate all the photons around y, to avoid the pole
-    ###############
-    scattering.do_avoid_pole(photon_batch, 1)
-
-
-
-    # TODO: do bounds automatically
-
     neighborhood = stage._size_m
     theta_min = stage._theta_min
     theta_max = stage._theta_max
@@ -143,24 +134,24 @@ def histogram(photon_batch, stage):
 ############
 ############
 ############
-#    one_histogram_theta(
-#        grid_size,
-#        block_size,
-#        bins,
-#        size,
-#        photon_batch.alive,
-#        photon_batch.wavelength_nm,
-#        photon_batch.ez_z,
-#        photon_batch.photons_per_bundle,
-#        theta_min,
-#        theta_max,
-#        "Radiant Intensity",
-#        r"Polar angle theta $\mathregular{(radians)}$",
-#        r"Radiant Intensity $\mathregular{(W/sr)}$",
-#        np.float32(1),
-#        photon_batch.duration_s,
-#        stage._histogram_ez_theta_unweighted,
-#    )
+    one_histogram_theta(
+        grid_size,
+        block_size,
+        bins,
+        size,
+        photon_batch.alive,
+        photon_batch.wavelength_nm,
+        photon_batch.ez_z,
+        photon_batch.photons_per_bundle,
+        theta_min,
+        theta_max,
+        "Count (W)",
+        r"Polar angle theta $\mathregular{(radians)}$",
+        r"Count $\mathregular{(W)}$",
+        np.float32(1),
+        photon_batch.duration_s,
+        stage._histogram_ez_theta_count,
+    )
 #
 #    print("foo0")
 #    import matplotlib.pyplot as plt
@@ -245,11 +236,6 @@ def histogram(photon_batch, stage):
                  "x",
                  "theta",
                  stage._scatter)
-
-    ###############
-    # now rotate the input back where it was
-    ###############
-    scattering.do_avoid_pole(photon_batch, -1)
 
 # TODO: this isn't very useful, get rid of it.
 def counter(photons,
@@ -337,47 +323,26 @@ def histogram_4d(photons,
     (energy_per_bin_j, edges) = cp.histogramdd(
         points,
         bins=(27,27,27,18),
-###########
-# avoid the poles
-###########
+        # there's an intensity singularity at the pole, and a radiance
+        # singularity at 90 degrees, so carve those points out
         range = ((x_min,x_max),(y_min,y_max),(0.01,0.99*np.pi/2),(-np.pi,np.pi)),
-        #range = ((x_min,x_max),(y_min,y_max),(0,np.pi),(-np.pi,np.pi)),
-        #range = ((x_min,x_max),(y_min,y_max),(np.pi/16,15*np.pi/16),(-np.pi,np.pi)),
         weights=photons.alive * energy_per_bundle_j)
-
-
-#    print(f"energy_per_bin_j {energy_per_bin_j}")
-#    print(f"sum over sphere {cp.sum(energy_per_bin_j, axis=(2,3))}")
-#    print(f"sum over area {cp.sum(energy_per_bin_j, axis=(0,1))}")
-#    print(f"sum over phi and x {cp.sum(energy_per_bin_j, axis=(0,3))}")
-#    print(f"edges {edges}")
 
     # would this be better as a constant?
     bin_area_m2 = cp.outer(edges[0][1:] - edges[0][:-1],
                            edges[1][1:] - edges[1][:-1])
 
-#    print(f"bin_area_m2 {bin_area_m2}")
-#    print(f"bin_area_m2 shape {bin_area_m2.shape}")
-
     bin_area_m2_stretched = bin_area_m2[:,:,None,None]
-#    print(f"bin_area_m2_stretched {bin_area_m2_stretched}")
-#    print(f"bin_area_m2_stretched.shape {bin_area_m2_stretched.shape}")
 
     bin_area_sr = cp.outer(cp.cos(edges[2][:-1]) - cp.cos(edges[2][1:]),
                            edges[3][1:] - edges[3][:-1])
-#    print(f"bin_area_sr.shape {bin_area_sr.shape}")
-#    print(f"bin_area_sr {bin_area_sr}")
 
     bin_area_sr_stretched = bin_area_sr[None,None,:,:]
-#    print(f"bin_area_sr_stretched {bin_area_sr_stretched}")
-#    print(f"bin_area_sr_stretched.shape {bin_area_sr_stretched.shape}")
 
     power_per_bin_w = energy_per_bin_j/photons.duration_s
-# the bin area is the problem, duh
     intensity_w_sr = power_per_bin_w / bin_area_sr_stretched
 
     # TODO: the bin edges may not be the same from batch to batch
-
     intensity_histogram_output._bin_edges = edges
     intensity_histogram_output.add(intensity_w_sr)
 
@@ -385,20 +350,11 @@ def histogram_4d(photons,
     intensity_histogram_output._xlabel = xlabel
     intensity_histogram_output._ylabel = ylabel
 
-    # whoops, radiance needs *projected* bin area
     theta_bin_centers = (edges[2][:-1] + edges[2][1:]) / 2
     theta_bin_centers_stretched = theta_bin_centers[None,None,:,None]
 
-    ###############
-    ###############
-    # because the axes are rotated the projected area also needs to be rotated, i.e. sin instead of cos
     projected_area_factor = np.abs(np.cos(theta_bin_centers_stretched))
-#    projected_area_factor = np.abs(np.sin(theta_bin_centers_stretched))
-
-#    print(f"projected_area_factor {projected_area_factor}")
-#    print(f"projected_area_factor.shape {projected_area_factor.shape}")
     radiance_w_sr_m2 = intensity_w_sr / (bin_area_m2_stretched * projected_area_factor)
-#    print(f"radiance_w_sr_m2 {radiance_w_sr_m2}")
 
     radiance_histogram_output._bin_edges = edges
     radiance_histogram_output.add(radiance_w_sr_m2)
@@ -406,11 +362,6 @@ def histogram_4d(photons,
     radiance_histogram_output._title = radiance_title
     radiance_histogram_output._xlabel = xlabel
     radiance_histogram_output._ylabel = ylabel
-
-
-
-
-# there are 3 of these to avoid conditionals and make it simpler to read
 
 
 def one_histogram(

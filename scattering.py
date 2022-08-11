@@ -5,42 +5,49 @@ import numpy as np
 from cupyx import jit
 import stats_cuda
 from scipy.stats import norm
+from abc import ABC, abstractmethod
 
-# SCATTERING THETA
+class Scattering(ABC):
+    @abstractmethod
+    def get_scattering_theta(self, size: np.int32) -> cp.ndarray:
+        pass
+
+class HenyeyGreensteinScattering(Scattering):
+    def __init__(self, g: np.float32):
+        self._g = g
+        self._rng = cp.random.default_rng()
+
+    def get_scattering_theta(self, size: np.int32) -> cp.ndarray:
+        random_input = self._g * 2 * self._rng.random(size, dtype=np.float32)
+        HenyeyGreensteinScattering._henyey_loop((128,), (1024,), (random_input, self._g, size))
+        return random_input
+
+    @staticmethod
+    @jit.rawkernel()
+    def _henyey_loop(random_inout: cp.ndarray, g: np.float32, size: np.int32) -> None:
+        tid = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
+        ntid = jit.gridDim.x * jit.blockDim.x
+        for i in range(tid, size, ntid):
+            random_inout[i] = HenyeyGreensteinScattering._henyey(g, random_inout[i])
+
+    @staticmethod
+    @jit.rawkernel(device=True)
+    def _henyey(g: np.float32, r: np.float32) -> np.float32:
+        """r: random[0,2g)"""
+        temp = (1 - g * g) / (1 - g + r)
+        cost = (1 + g * g - temp * temp) / (2 * g)
+        return cp.arccos(cost)
 
 
-@jit.rawkernel(device=True)
-def _hanley(g: np.float32, r: np.float32) -> np.float32:
-    """r: random[0,2g)"""
-    # TODO: do random inside
-    temp = (1 - g * g) / (1 - g + r)
-    cost = (1 + g * g - temp * temp) / (2 * g)
-    return cp.arccos(cost)
-
-#
-@jit.rawkernel()
-def _hanley_loop(random_inout: cp.ndarray, g: np.float32, size: np.int32) -> None:
-    tid = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
-    ntid = jit.gridDim.x * jit.blockDim.x
-    for i in range(tid, size, ntid):
-        random_inout[i] = _hanley(g, random_inout[i])
-
-
-def get_scattering_theta(g: np.float32, size: np.int32) -> cp.ndarray:
-    random_input = cp.random.uniform(
-        np.float32(0), np.float32(2.0 * g), np.int32(size), dtype=np.float32
-    )
-    _hanley_loop((128,), (1024,), (random_input, np.float32(g), np.int32(size)))
-    return random_input
-
-class LambertianScattering:
+class LambertianScattering(Scattering):
+    """ Approximately right for Edmund white glass or Acrylite wd008. """
     def __init__(self):
         self._rng = cp.random.default_rng()
 
-    def get_scattering_theta(self, size: int) -> cp.ndarray:
+    def get_scattering_theta(self, size: np.int32) -> cp.ndarray:
         return cp.arccos(2 * self._rng.random(size, dtype=np.float32) - 1.0) / 2
 
-class AcryliteScattering_0d010:
+class AcryliteScattering_0d010(Scattering):
     """ Generate scattering angles that result in intensity distribution
     that matches the Thor shape.  A good match is two gaussians, one one-third
     the height and two times the width of the other, plus a small constant.
@@ -79,53 +86,6 @@ class AcryliteScattering_0d010:
     def get_scattering_theta(self, size: int) -> cp.ndarray:
         """Does not account for absorption.  Please remove TK% of the rows returned."""
         return stats_cuda.sample_pdf(size, self.pdf_x_theta_rad, self.angle_distribution)
-
-class AcryliteScattering_wd008:
-    def __init__(self):
-
-        # parameters from Thor, Acrylite etc
-        # matches Thor shape, Acrylite FWHM of 40 degrees
-        mu = 0 # mean is normal
-        ##############
-        # these work for the 20 degree 0d010df material
-        ##############
-        #sigma_1_rad = 17.25 * np.pi / 180
-        #sigma_2_rad = 34.5 * np.pi / 180
-        # this is for wd008
-
-
-
-#        sigma_1_rad = 37 * np.pi / 180
-#        sigma_2_rad = 74 * np.pi / 180
-#        a_1 = 0.75 # peak
-#        a_2 = 0.25 # tails
-#        a_3 = 0.008 # Thor data shows this
-#        a_1_actually = sigma_1_rad * np.sqrt(2 * np.pi) * a_1
-#        a_2_actually = sigma_2_rad * np.sqrt(2 * np.pi) * a_2
-#
-#        # make a distribution
-#        bins = 256
-#        theta_rad = np.linspace(0, np.pi/2, bins)
-#
-#        gaussian_1 = cp.array(a_1_actually * norm.pdf(theta_rad, scale = sigma_1_rad))
-#        gaussian_2 = cp.array(a_2_actually * norm.pdf(theta_rad, scale = sigma_2_rad))
-#        self.cp_theta_rad = cp.array(theta_rad)
-#        self.gaussian_sum = ((gaussian_1 + gaussian_2) * (1-a_3) + a_3)
-
-
-#    def get_scattering_theta_old(self, size):
-#        """Does not account for absorption.  Please remove 16% of the rows returned."""
-########
-# if i use this again, make it one sided; i think this yields negative numbers
-# half the time. :-(
-#        return stats_cuda.generate_rand_from_pdf(size, self.gaussian_sum, self.cp_theta_rad)
-
-    def get_scattering_theta(self, size):
-        """Lambertian"""
-        #return cp.full(size, 7*np.pi/16, dtype=np.float32)
-        return cp.arcsin(cp.random.uniform(0,1,size,dtype=np.float32))
-        #return cp.arccos(cp.random.uniform(0,1,size,dtype=np.float32))
-    
 
 
 # SCATTERING PHI
@@ -197,60 +157,6 @@ def do_rotation(
 
     return (x, y, z)
 
-# oh i can just transform without all these multiplications
-
-#     [0, 0, 1]
-# m = |0, 1, 0|
-#     [-1, 0, 0]
-
-@jit.rawkernel()
-def avoid_pole(
-    vx: cp.ndarray,
-    vy: cp.ndarray,
-    vz: cp.ndarray,
-    angle: np.int32, # 1 = bend away from pole, -1 = bend back
-    size: np.int32,
-) -> None:
-    """mutate v, rotating it around the y axis, so that the pole ends up
-    at xy00, which has no areal singularity for radiance scaling; this is
-    also used to rotate back."""
-
-    ux = np.float32(0.0)
-    uy = np.float32(1.0)
-    uz = np.float32(0.0)
-    rot = np.float32(angle * np.pi/2)
-
-    tid = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
-    ntid = jit.gridDim.x * jit.blockDim.x
-    for i in range(tid, size, ntid):
-        (vx[i], vy[i], vz[i]) = do_rotation(vx[i], vy[i], vz[i], ux, uy, uz, rot)
-
-#def do_avoid_pole_old(photons, angle):
-#    block_size = 1024
-#    size = np.int32(photons.size())
-#    grid_size = int(math.ceil(size / block_size))
-#    avoid_pole(
-#        (grid_size,),
-#        (block_size,),
-#        (photons.ez_x, photons.ez_y, photons.ez_z, angle, size)
-#    )
-
-def do_avoid_pole(photons, angle):
-##########
-##########
-##########
-    return
-##########
-##########
-##########
-    if angle > 0:
-        tmp =  photons.ez_x
-        photons.ez_x = photons.ez_z
-        photons.ez_z = -tmp
-    else:
-        tmp =  photons.ez_x
-        photons.ez_x = -photons.ez_z
-        photons.ez_z = tmp
 
 @jit.rawkernel()
 def scatter(
@@ -261,9 +167,7 @@ def scatter(
     phi: cp.ndarray,
     size: np.int32,
 ) -> None:
-    """Mutate v according to the angles in theta and phi.
-
-    TODO: do the random part inside, to avoid allocating those huge vectors."""
+    """Mutate v according to the angles in theta and phi."""
     tid = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
     ntid = jit.gridDim.x * jit.blockDim.x
     for i in range(tid, size, ntid):

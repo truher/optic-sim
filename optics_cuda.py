@@ -471,6 +471,7 @@ class Diffuser:
         """
         self._g = np.float32(g)
         self._absorption = np.float32(absorption)
+        self._scattering = scattering.HenyeyGreensteinScattering(self._g)
         # TODO: the actual absorption (and reflection) depends on the incident and scattered angle
         # like there should be zero emission at 90 degrees.
 
@@ -485,7 +486,7 @@ class Diffuser:
 
         size = np.int32(photons.size())  # TODO eliminate this
         phi = scattering.get_scattering_phi(size)
-        theta = scattering.get_scattering_theta(self._g, size)
+        theta = self._scattering.get_scattering_theta(size)
         block_size = 1024  # max
         grid_size = int(math.ceil(size / block_size))
 #        print(size)
