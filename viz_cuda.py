@@ -8,19 +8,21 @@ import k3d  # type:ignore
 import optics_cuda
 import stats_cuda
 import simulation
+import matplotlib.ticker as ticker
 
 warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
 
 
 def summary(stage):
     print(f"photon bundle count: {stage._photons_size}")
-    print(f"photon total energy (J): {stage._photons_energy_j}")
+    print(f"photon total energy (J): {stage._photons_energy_j:.5f}")
+    print(f"photon total power (W): {stage._photons_power_w:.5f}")
 
 
 def plot_polar_histogram(data: stats_cuda.Histogram):
     # I used to mirror this data but i think it can be deceiving,
     # implying symmetry where there may not be any.
-    fig = plt.figure(figsize=[15, 12])
+    fig = plt.figure(figsize=[7, 5])
     axes = plt.subplot(projection="polar")
     axes.plot(
         (data._bin_edges[1:] + data._bin_edges[:-1]) / 2,
@@ -44,15 +46,56 @@ def plot_histogram_data(data: stats_cuda.Histogram):
     plt.show()
 
 
+def plot_N_histograms(data):
+    N = len(data)
+    width = 13
+    fig = plt.figure(figsize=[width, width/N])
+    for p in range(N):
+        axes = plt.subplot(1, N, p+1)
+        plt.grid(True)
+        axes.plot((data[p]._bin_edges[1:] + data[p]._bin_edges[:-1]) / 2,
+                  data[p]._hist, snap=False)
+        axes.set_title(data[p]._title, fontsize=14)
+        axes.set_xlabel(data[p]._xlabel, fontsize=14)
+        axes.set_ylabel(data[p]._ylabel, fontsize=14)
+    plt.tight_layout()
+    plt.show()
+
+def plot_cartesian_and_polar_histograms(data: stats_cuda.Histogram):
+    fig = plt.figure(figsize=[8,4])
+    plt.suptitle(data._title, fontsize=18)
+
+    ax = plt.subplot(121)
+    ax.xaxis.set_major_locator(ticker.LinearLocator(10))
+    ax.yaxis.set_major_locator(ticker.LinearLocator(11))
+    #ax.set_xlim(0,np.pi/2)
+    plt.grid(True)
+    ax.plot((data._bin_edges[1:] + data._bin_edges[:-1]) / 2, data._hist, snap=False)
+    ax.set_xlabel(data._xlabel, fontsize=14)
+    ax.set_ylabel(data._ylabel, fontsize=14)
+
+    ax = plt.subplot(122, projection='polar')
+    ax.plot(
+        (data._bin_edges[1:] + data._bin_edges[:-1]) / 2,
+        data._hist,
+        color="blue",
+        snap=False,
+    )
+    ax.set_xlabel(data._xlabel, fontsize=14)
+    ax.set_ylabel(data._ylabel, fontsize=14)
+    plt.tight_layout()
+    plt.show()
+
+
 def plot_histogram_4d(data: stats_cuda.Histogram):
     edges = data._bin_edges
-    radiance_w_sr_m2 = data._hist
+    radiance_w_sr_m2 = data._hist # x,y,theta,phi
 
     # max_radiance_w_sr_m2 = cp.amax(radiance_w_sr_m2, axis=(2,3))
     max_radiance_w_sr_m2 = cp.amax(radiance_w_sr_m2, axis=(2, 3))
     # max_radiance_w_sr_m2 = cp.sum(radiance_w_sr_m2, axis=(2,3))
 
-    fig = plt.figure(figsize=[15, 12])
+    fig = plt.figure(figsize=[7, 5])
     plt.imshow(
         cp.transpose(max_radiance_w_sr_m2).get(),  # vmin=0,
         extent=(
@@ -70,10 +113,11 @@ def plot_histogram_4d(data: stats_cuda.Histogram):
 
     # pick 9 areas and make polars for each.
     theta_x = (data._bin_edges[2][1:] + data._bin_edges[2][:-1]) / 2
-    fig = plt.figure(figsize=[15, 12])
+    fig = plt.figure(figsize=[7, 5])
     plt.suptitle(data._title, fontsize=14, fontweight="black")
 
     N = 3
+    y_max = cp.max(cp.sum(data._hist, axis=3)).item()
     for xplot in range(N):
         for yplot in range(N):
             xidx = int(math.floor((xplot * 2 + 1) * data._hist.shape[0] / (N * 2)))
@@ -89,11 +133,13 @@ def plot_histogram_4d(data: stats_cuda.Histogram):
                 color="blue",
                 snap=False,
             )
+            if y_max > 0:
+                axes.set_ylim([0,y_max])
     plt.show()
 
 
 def plot_scatter(data):
-    fig = plt.figure(figsize=[15, 12])
+    fig = plt.figure(figsize=[7, 5])
     plt.plot(data._x.get(), data._y.get(), ",", snap=False)
     plt.title(data._title, fontsize=14, fontweight="black")
     plt.xlabel(data._xlabel, fontsize=14)
@@ -102,15 +148,16 @@ def plot_scatter(data):
 
 
 def plot_all_histograms(stage):
-    plot_histogram_data(stage._histogram_r_x)
-    plot_histogram_data(stage._histogram_r_y)
-    plot_histogram_data(stage._histogram_ez_phi)
-    plot_histogram_data(stage._histogram_ez_theta_count)
-    plot_histogram_data(stage._histogram_ez_theta_intensity)
-    plot_histogram_data(stage._histogram_ez_theta_radiance)
-    plot_polar_histogram(stage._histogram_ez_theta_count)
-    plot_polar_histogram(stage._histogram_ez_theta_intensity)
-    plot_polar_histogram(stage._histogram_ez_theta_radiance)
+    plot_N_histograms([stage._histogram_r_x,
+                       stage._histogram_r_y,
+                       stage._histogram_ez_phi])
+
+    plot_cartesian_and_polar_histograms(stage._histogram_ez_theta_count)
+
+    plot_cartesian_and_polar_histograms(stage._histogram_ez_theta_intensity)
+
+    plot_cartesian_and_polar_histograms(stage._histogram_ez_theta_radiance)
+
     plot_histogram_4d(stage._histogram_4d_count)
     plot_histogram_4d(stage._histogram_4d_intensity)
     plot_histogram_4d(stage._histogram_4d_radiance)

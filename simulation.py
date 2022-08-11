@@ -2,16 +2,12 @@ import cupy as cp  # type: ignore
 import numpy as np
 import stats_cuda
 import optics_cuda
+import viz_cuda
 import util
-from tqdm.autonotebook import tqdm, trange
+from tqdm.notebook import tqdm, trange
+from IPython.display import Markdown, display
 
-
-class Simulator:
-    """The specific geometry etc of this simulation.
-    Runs N waves of M photon bundles each.  Each bundle represents a
-    set of photons, each photon has a different wavelength (energy).
-    """
-
+class BaseSimulator:
     def __init__(self, results, waves, bundles, bundle_size):
         """waves: number of full iterations to run
         bundles: number of "Photons" groups (bundles) to run
@@ -19,16 +15,64 @@ class Simulator:
         I think this will all change, specifying something like
         emitter power or whatever but here it is for now.
         """
+        # TODO: move stuff from results to members here.
         self._results = results
         self._waves = waves
         self._bundles = bundles
         self._bundle_size = bundle_size  # TODO Actually use this?
+        self._camera = optics_cuda.Camera(0.02, 0.03, -0.0050, 0.0050)
 
     def run_all_waves(self):
         # for i in range(self._waves):
         for i in trange(self._waves):
             self.run()
+        display(Markdown("# Done"))
 
+    def record_results(self, stage, photons):
+        stage._photons_size += photons.count_alive()
+        stage._photons_energy_j += photons.energy_j()
+        stage._photons_power_w += photons.power_w()
+        stage._sample.add(photons.sample())
+        stats_cuda.histogram(photons, stage)
+
+
+class BackgroundSimulator(BaseSimulator):
+    """Simulate the path from background objects to the camera."""
+
+    def run(self):
+        source_wavelength_nm = 555
+        source_photons_per_bundle = 5e7
+        duration_s = 0.001
+
+        source = optics_cuda.MonochromaticLambertianSource(
+            self._results._source_stage._size_m,
+            self._results._source_stage._size_m,
+            source_wavelength_nm,
+            source_photons_per_bundle,
+            duration_s,
+        )
+        photons = source.make_photons(self._bundles)
+        # point the source at the camera
+        photons.ez_z *= -1.0
+        #photons.debug(self._results._source_stage._size_m)
+        self.record_results(self._results._source_stage, photons)
+
+        optics_cuda.propagate_to_camera(
+            photons, location=self._results._camera_plane_stage._height_m
+        )
+        photons.prune_outliers(self._results._camera_plane_stage._size_m)
+        self.record_results(self._results._camera_plane_stage, photons)
+
+        # TODO: filter goes here
+
+        self._camera.count(photons)
+
+
+class Simulator(BaseSimulator):
+    """The specific geometry etc of this simulation.
+    Runs N waves of M photon bundles each.  Each bundle represents a
+    set of photons, each photon has a different wavelength (energy).
+    """
     def run(self):
         """Add a run to the results."""
         timer = util.MyTimer()
@@ -99,13 +143,11 @@ class Simulator:
         photons.prune_outliers(self._results._camera_plane_stage._size_m)
         self.record_results(self._results._camera_plane_stage, photons)
 
-        timer.tick("one run")
+        # TODO: filter goes here
 
-    def record_results(self, stage, photons):
-        stage._photons_size += photons.count_alive()
-        stage._photons_energy_j += photons.energy_j()
-        stage._sample.add(photons.sample())
-        stats_cuda.histogram(photons, stage)
+        self._camera.count(photons)
+
+        timer.tick("one run")
 
 
 class Study:

@@ -42,6 +42,14 @@ class Photons:
             return
         cp.logical_and(self.alive, cp.random.random(self.size()) > p, out=self.alive)
 
+    def count_inside(self, xmin, xmax, ymin, ymax):
+        inside = cp.copy(self.alive)
+        cp.logical_and(inside, self.r_x >= xmin, out=inside)
+        cp.logical_and(inside, self.r_x <= xmax, out=inside)
+        cp.logical_and(inside, self.r_y >= ymin, out=inside)
+        cp.logical_and(inside, self.r_y <= ymax, out=inside)
+        return cp.count_nonzero(inside)
+
     def prune_outliers(self, size):
         """set out-of-bounds photons to dead"""
         cp.logical_and(self.alive, self.r_x >= -size / 2, out=self.alive)
@@ -516,13 +524,29 @@ class HenyeyGreensteinDiffuser:
 
 
 class ColorFilter:
-    """transmits some of the photons depending on their wavelength."""
+    """Transmits some of the photons depending on their wavelength."""
 
     def __init__(self):
         pass
 
     def transfer(self, photons: Photons) -> None:
         pass
+
+class Camera:
+    """Counts photons.  For now assume they're at the right z.
+    """
+    def __init__(self, xmin, xmax, ymin, ymax):
+        self._xmin = xmin
+        self._xmax = xmax
+        self._ymin = ymin
+        self._ymax = ymax
+        self._total  = 0
+
+    def count(self, photons: Photons):
+        self._total  += photons.count_inside(self._xmin,self._xmax,self._ymin,self._ymax)
+
+#does this write to a result somehow?
+#maybe just make the camera persist?
 
 
 def propagate_to_reflector(photons, location):
