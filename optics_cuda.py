@@ -6,19 +6,17 @@ import numpy as np
 import scipy.constants
 import stats_cuda
 import scattering
+from abc import ABC, abstractmethod
 
 
 class Photons:
-    """wraps cuda arrays"""
+    """Wraps columnar cuda arrays."""
 
     def __init__(self):
         # location
         self.r_x = None
         self.r_y = None
         self.r_z = None
-        # direction .. note this is too many degrees of freedom,
-        # it might be better to use phi/theta only even though
-        # it's a bit more computation
         self.ez_x = None
         self.ez_y = None
         self.ez_z = None
@@ -81,9 +79,6 @@ class Photons:
         grid_size = int(math.ceil(16 / alive_ratio))
         selection_size = min(size, grid_size * block_size)
         scale = np.int32(size // selection_size)
-
-        # mempool = cp.get_default_memory_pool()
-        # mempool.free_all_blocks()
 
         position_3d = cp.zeros((selection_size, 3), dtype=np.float32)
         direction_3d = cp.zeros((selection_size, 3), dtype=np.float32)
@@ -150,20 +145,11 @@ class PhotonsStacked:
             self._d = np.concatenate([self._d, d])
 
 
-class Source:
+class Source(ABC):
+    @abstractmethod
     def make_photons(self, bundles: np.int32) -> Photons:
-        raise NotImplementedError()
+        pass
 
-
-@jit.rawkernel()
-def spherical_to_cartesian_raw(theta_z, phi_x, y, size) -> None:
-    """In-place calculation reuses the inputs."""
-    tid = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
-    ntid = jit.gridDim.x * jit.blockDim.x
-    for i in range(tid, size, ntid):
-        y[i] = cp.sin(theta_z[i]) * cp.sin(phi_x[i])
-        phi_x[i] = cp.sin(theta_z[i]) * cp.cos(phi_x[i])
-        theta_z[i] = cp.cos(theta_z[i])
 
 class PencilSource(Source):
     """Zero area zero divergence."""
@@ -188,6 +174,7 @@ class PencilSource(Source):
 
 
 class FatPencil(Source):
+    """Finite area zero divergence."""
     def __init__(
         self,
         width_m: float,
@@ -254,7 +241,7 @@ class MonochromaticLambertianSource(Source):
         photons.ez_z = (
             cp.arccos(cp.random.uniform(-1, 1, bundles, dtype=np.float32)) / 2
         )
-        spherical_to_cartesian_raw(
+        MonochromaticLambertianSource.spherical_to_cartesian_raw(
             (128,), (1024,), (photons.ez_z, photons.ez_x, photons.ez_y, bundles)
         )
         photons.alive = cp.ones(bundles, dtype=bool)
@@ -263,8 +250,21 @@ class MonochromaticLambertianSource(Source):
         photons.duration_s = self._duration_s
         return photons
 
-class SimplerLightbox:
-    """doesn't reflect, doesn't shrink the source to a point."""
+    @staticmethod
+    @jit.rawkernel()
+    def spherical_to_cartesian_raw(theta_z, phi_x, y, size) -> None:
+        """In-place calculation reuses the inputs."""
+        # TODO: remove this, just make the extra vectors
+        tid = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
+        ntid = jit.gridDim.x * jit.blockDim.x
+        for i in range(tid, size, ntid):
+            y[i] = cp.sin(theta_z[i]) * cp.sin(phi_x[i])
+            phi_x[i] = cp.sin(theta_z[i]) * cp.cos(phi_x[i])
+            theta_z[i] = cp.cos(theta_z[i])
+
+
+class Iris:
+    """Pass photons inside, remove photons outside."""
 
     def __init__(self, height: float, size: float):
         """
@@ -282,7 +282,7 @@ class SimplerLightbox:
 class Lightbox:
     """Represents the box between the source and diffuser.
 
-    Sides are somewhat reflective.
+    Sides are somewhat reflective.  Source is treated as a point.
     """
 
     def __init__(self, height: float, size: float):
@@ -332,6 +332,9 @@ class Lightbox:
             ),
             out=photons.alive,
         )
+
+
+
         
 
 def schlick_reflection(n_1: float, n_2: float, cos_theta_rad: cp.ndarray):
@@ -457,7 +460,9 @@ class AcryliteDiffuser_0d010:
             AcryliteDiffuser_0d010.N_AIR, photons.ez_z))
         cp.logical_and(photons.alive, photons.ez_z > 0, out=photons.alive)
 
-class Diffuser:
+
+
+class HenyeyGreensteinDiffuser:
     """Something that changes photon direction.
 
     Examples: diffuser, retroreflector.
