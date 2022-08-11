@@ -276,6 +276,8 @@ class SimplerLightbox:
 
     def propagate_without_kernel(self, photons: Photons) -> None:
         propagate_to_reflector(photons, self._height)
+        photons.prune_outliers(self._size)
+
 
 class Lightbox:
     """Represents the box between the source and diffuser.
@@ -367,13 +369,17 @@ class AcryliteDiffuser:
     N_AIR = 1.0
     N_ACRYLIC = 1.495
     def __init__(self):
-        self._scattering = scattering.AcryliteScattering()
+        self._scattering = scattering.AcryliteScattering_0d010()
         # internal absorption, calibrated to 84% total transmission
         # for a pencil beam
         #### this is for 0d01df
-        #self._absorption = 0.0814
+        self._absorption = 0.0814
         #### this is for lambertian
-        self._absorption = 0.355
+
+#### TODO what should this be?
+        #self._absorption = 0.355
+
+## TODO: expose the angle distribution for a graph
 
     def diffuse(self, photons):
         # remove photons reflected at the entry surface (air -> acrylic)

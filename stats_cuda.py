@@ -143,31 +143,31 @@ def histogram(photon_batch, stage):
 ############
 ############
 ############
-    one_histogram_theta(
-        grid_size,
-        block_size,
-        bins,
-        size,
-        photon_batch.alive,
-        photon_batch.wavelength_nm,
-        photon_batch.ez_z,
-        photon_batch.photons_per_bundle,
-        theta_min,
-        theta_max,
-        "Radiant Intensity",
-        r"Polar angle theta $\mathregular{(radians)}$",
-        r"Radiant Intensity $\mathregular{(W/sr)}$",
-        np.float32(1),
-        photon_batch.duration_s,
-        stage._histogram_ez_theta_unweighted,
-    )
-
-    print("foo0")
-    import matplotlib.pyplot as plt
-    h,b = cp.histogram(cp.arccos(photon_batch.ez_z), 100)
-    fig = plt.figure(figsize=[15, 12])
-    ax = plt.subplot(projection='polar')
-    plt.plot(((b[:-1]+b[1:])/2).get(),h.get())
+#    one_histogram_theta(
+#        grid_size,
+#        block_size,
+#        bins,
+#        size,
+#        photon_batch.alive,
+#        photon_batch.wavelength_nm,
+#        photon_batch.ez_z,
+#        photon_batch.photons_per_bundle,
+#        theta_min,
+#        theta_max,
+#        "Radiant Intensity",
+#        r"Polar angle theta $\mathregular{(radians)}$",
+#        r"Radiant Intensity $\mathregular{(W/sr)}$",
+#        np.float32(1),
+#        photon_batch.duration_s,
+#        stage._histogram_ez_theta_unweighted,
+#    )
+#
+#    print("foo0")
+#    import matplotlib.pyplot as plt
+#    h,b = cp.histogram(cp.arccos(photon_batch.ez_z), 100)
+#    fig = plt.figure(figsize=[15, 12])
+#    ax = plt.subplot(projection='polar')
+#    plt.plot(((b[:-1]+b[1:])/2).get(),h.get())
 
     bin_edges = np.linspace(theta_min, theta_max, bins + 1)
     bin_area_sr = (np.cos(bin_edges[:-1]) - np.cos(bin_edges[1:])) * 2 * np.pi
@@ -187,15 +187,15 @@ def histogram(photon_batch, stage):
         r"Radiant Intensity $\mathregular{(W/sr)}$",
         bin_area_sr,
         photon_batch.duration_s,
-        stage._histogram_ez_theta_weighted,
+        stage._histogram_ez_theta_intensity,
     )
 
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
     ###############
     ###############
     # because the axes are rotated the projected area also needs to be rotated, i.e. sin instead of cos
-    #projected_area_m2 = (y_max - y_min) * (x_max - x_min) * np.abs(np.cos(bin_centers))
-    projected_area_m2 = (y_max - y_min) * (x_max - x_min) * np.abs(np.sin(bin_centers))
+    projected_area_m2 = (y_max - y_min) * (x_max - x_min) * np.abs(np.cos(bin_centers))
+#    projected_area_m2 = (y_max - y_min) * (x_max - x_min) * np.abs(np.sin(bin_centers))
     ###############
     ###############
     bin_area_sr_m2 = (
@@ -225,9 +225,11 @@ def histogram(photon_batch, stage):
                  x_max,
                  y_min,
                  y_max,
+                 r"Maximum intensity $\mathregular{W/sr)}$",
                  r"Maximum radiance $\mathregular{W/sr\, m^2)}$",
                  "X (m)",
                  "Y (m)",
+                 stage._histogram_4d_intensity,
                  stage._histogram_4d_radiance)
     counter(photon_batch,
                  x_min,
@@ -239,7 +241,7 @@ def histogram(photon_batch, stage):
                  "Y (m)",
                  stage._histogram_4d_count)
     scatterplot(photon_batch,
-                 "theta vs x",
+                 "count theta vs x",
                  "x",
                  "theta",
                  stage._scatter)
@@ -249,6 +251,7 @@ def histogram(photon_batch, stage):
     ###############
     scattering.do_avoid_pole(photon_batch, -1)
 
+# TODO: this isn't very useful, get rid of it.
 def counter(photons,
                  x_min,
                  x_max,
@@ -267,7 +270,7 @@ def counter(photons,
 
     (ct_per_bin, edges) = cp.histogramdd(
         points,
-        bins=(27,27,27,54),
+        bins=(27,27,27,18),
         #bins=(18,18,16,32),
         range = ((x_min,x_max),(y_min,y_max),(0,np.pi),(-np.pi,np.pi)),
         weights=photons.alive)
@@ -286,10 +289,12 @@ def scatterplot(photons,
                 scatter_output):
     # just retain a window in x
 
-    #window_min = -0.001
-    #window_max = 0.001
-    window_min = 0.005
-    window_max = 0.010
+####
+# center
+    window_min = -0.001
+    window_max = 0.001
+    #window_min = 0.005
+    #window_max = 0.010
 
     x = photons.r_x
     x = cp.compress(
@@ -300,16 +305,21 @@ def scatterplot(photons,
         cp.logical_and( cp.logical_and( photons.alive, photons.r_y < window_max), photons.r_y > window_min),
         y, axis=0)
     scatter_output.add(x,y)
+    scatter_output._title=title
+    scatter_output._xlabel=xlabel
+    scatter_output._ylabel=ylabel
 
 def histogram_4d(photons,
                  x_min,
                  x_max,
                  y_min,
                  y_max,
-                 title,
+                 intensity_title,
+                 radiance_title,
                  xlabel,
                  ylabel,
-                 histogram_output):
+                 intensity_histogram_output,
+                 radiance_histogram_output):
 
 
     points = (
@@ -326,12 +336,13 @@ def histogram_4d(photons,
     # joules
     (energy_per_bin_j, edges) = cp.histogramdd(
         points,
-        bins=(27,27,27,54),
+        bins=(27,27,27,18),
 ###########
 # avoid the poles
 ###########
+        range = ((x_min,x_max),(y_min,y_max),(0.01,0.99*np.pi/2),(-np.pi,np.pi)),
         #range = ((x_min,x_max),(y_min,y_max),(0,np.pi),(-np.pi,np.pi)),
-        range = ((x_min,x_max),(y_min,y_max),(np.pi/16,15*np.pi/16),(-np.pi,np.pi)),
+        #range = ((x_min,x_max),(y_min,y_max),(np.pi/16,15*np.pi/16),(-np.pi,np.pi)),
         weights=photons.alive * energy_per_bundle_j)
 
 
@@ -365,30 +376,36 @@ def histogram_4d(photons,
 # the bin area is the problem, duh
     intensity_w_sr = power_per_bin_w / bin_area_sr_stretched
 
+    # TODO: the bin edges may not be the same from batch to batch
+
+    intensity_histogram_output._bin_edges = edges
+    intensity_histogram_output.add(intensity_w_sr)
+
+    intensity_histogram_output._title = intensity_title
+    intensity_histogram_output._xlabel = xlabel
+    intensity_histogram_output._ylabel = ylabel
+
     # whoops, radiance needs *projected* bin area
     theta_bin_centers = (edges[2][:-1] + edges[2][1:]) / 2
     theta_bin_centers_stretched = theta_bin_centers[None,None,:,None]
+
     ###############
     ###############
     # because the axes are rotated the projected area also needs to be rotated, i.e. sin instead of cos
-    #projected_area_factor = np.abs(np.cos(theta_bin_centers_stretched))
-    projected_area_factor = np.abs(np.sin(theta_bin_centers_stretched))
+    projected_area_factor = np.abs(np.cos(theta_bin_centers_stretched))
+#    projected_area_factor = np.abs(np.sin(theta_bin_centers_stretched))
 
 #    print(f"projected_area_factor {projected_area_factor}")
 #    print(f"projected_area_factor.shape {projected_area_factor.shape}")
-
     radiance_w_sr_m2 = intensity_w_sr / (bin_area_m2_stretched * projected_area_factor)
-
 #    print(f"radiance_w_sr_m2 {radiance_w_sr_m2}")
 
-    # TODO: the bin edges may not be the same from batch to batch
-    histogram_output._bin_edges = edges
-    histogram_output.add(radiance_w_sr_m2)
-#    histogram_output.add(intensity_w_sr)
+    radiance_histogram_output._bin_edges = edges
+    radiance_histogram_output.add(radiance_w_sr_m2)
 
-    histogram_output._title = title
-    histogram_output._xlabel = xlabel
-    histogram_output._ylabel = ylabel
+    radiance_histogram_output._title = radiance_title
+    radiance_histogram_output._xlabel = xlabel
+    radiance_histogram_output._ylabel = ylabel
 
 
 
@@ -437,6 +454,7 @@ def one_histogram(
     histogram_output._ylabel = ylabel
 
 
+# TODO just use cp.histogram
 @jit.rawkernel()
 def _histogram(
     alive: cp.ndarray,  # bool
@@ -711,11 +729,13 @@ def select_and_stack(
         oalive[idx] = ialive[s_i]
 
 
-def generate_rand_from_pdf(size, pdf, x_grid):
+def sample_pdf(size: int, pdf_x: cp.ndarray, pdf_y: cp.ndarray) -> cp.ndarray:
     """Given a pdf, produce samples."""
-    cdf = cp.cumsum(pdf)
+    cdf = cp.cumsum(pdf_y)
     cdf = cdf / cdf[-1]
-    values = cp.random.rand(size)
+
+    rng = cp.random.default_rng()
+    values = rng.random(size)
     value_bin = cp.searchsorted(cdf, values)
-    random_from_cdf = x_grid[value_bin]
+    random_from_cdf = pdf_x[value_bin]
     return random_from_cdf

@@ -18,22 +18,68 @@ def _hanley(g: np.float32, r: np.float32) -> np.float32:
     return cp.arccos(cost)
 
 #
-#@jit.rawkernel()
-#def _hanley_loop(random_inout: cp.ndarray, g: np.float32, size: np.int32) -> None:
-#    tid = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
-#    ntid = jit.gridDim.x * jit.blockDim.x
-#    for i in range(tid, size, ntid):
-#        random_inout[i] = _hanley(g, random_inout[i])
+@jit.rawkernel()
+def _hanley_loop(random_inout: cp.ndarray, g: np.float32, size: np.int32) -> None:
+    tid = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
+    ntid = jit.gridDim.x * jit.blockDim.x
+    for i in range(tid, size, ntid):
+        random_inout[i] = _hanley(g, random_inout[i])
 
 
-#def get_scattering_theta(g: np.float32, size: np.int32) -> cp.ndarray:
-#    random_input = cp.random.uniform(
-#        np.float32(0), np.float32(2.0 * g), np.int32(size), dtype=np.float32
-#    )
-#    _hanley_loop((128,), (1024,), (random_input, np.float32(g), np.int32(size)))
-#    return random_input
+def get_scattering_theta(g: np.float32, size: np.int32) -> cp.ndarray:
+    random_input = cp.random.uniform(
+        np.float32(0), np.float32(2.0 * g), np.int32(size), dtype=np.float32
+    )
+    _hanley_loop((128,), (1024,), (random_input, np.float32(g), np.int32(size)))
+    return random_input
 
-class AcryliteScattering:
+class LambertianScattering:
+    def __init__(self):
+        pass
+
+    def get_scattering_theta(self, size: int) -> cp.ndarray:
+        pass
+
+class AcryliteScattering_0d010:
+    """ Generate scattering angles that result in intensity distribution
+    that matches the Thor shape.  A good match is two gaussians, one one-third
+    the height and two times the width of the other, plus a small constant.
+
+    Also matches the Acrylite width, which for 0d010
+    is 40 degrees, i.e. half angle of 20 degrees.  They say this is a measurement
+    compared to the *input* but i think that's insane, everybody else measures
+    the shape of the output independent of the input, so i'll do it that way.
+    """
+    def __init__(self):
+        mu = 0 # mean is normal
+        sigma_1_rad = 17.25 * np.pi / 180
+        sigma_2_rad = 34.5 * np.pi / 180
+        a_1 = 0.75 # peak
+        a_2 = 0.25 # tails
+        a_3 = 0.008 # Thor data shows this
+        a_1_actually = sigma_1_rad * np.sqrt(2 * np.pi) * a_1
+        a_2_actually = sigma_2_rad * np.sqrt(2 * np.pi) * a_2
+
+        # make a distribution
+        self.pdf_x_theta_rad = cp.linspace(0, np.pi/2, 512)
+
+        gaussian_1 = cp.array(
+            a_1_actually * norm.pdf(self.pdf_x_theta_rad.get(), scale = sigma_1_rad))
+        gaussian_2 = cp.array(
+            a_2_actually * norm.pdf(self.pdf_x_theta_rad.get(), scale = sigma_2_rad))
+        # this is the target intensity distribution.
+        intensity_distribution = ((gaussian_1 + gaussian_2) * (1-a_3) + a_3)
+        sin_term = cp.sin(self.pdf_x_theta_rad)
+        # TODO figure out the cos^5 schlick thing
+        schlick_term = 1 - (1 - cp.cos(self.pdf_x_theta_rad)) ** 5
+        
+        self.angle_distribution = intensity_distribution * sin_term * schlick_term
+
+    def get_scattering_theta(self, size: int) -> cp.ndarray:
+        """Does not account for absorption.  Please remove TK% of the rows returned."""
+        return stats_cuda.sample_pdf(size, self.pdf_x_theta_rad, self.angle_distribution)
+
+class AcryliteScattering_wd008:
     def __init__(self):
 
         # parameters from Thor, Acrylite etc

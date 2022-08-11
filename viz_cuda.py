@@ -64,7 +64,7 @@ def plot_histogram_4d(data: stats_cuda.Histogram):
     #max_radiance_w_sr_m2 = cp.sum(radiance_w_sr_m2, axis=(2,3))
 
     fig=plt.figure(figsize=[15,12])
-    plt.imshow(cp.transpose(max_radiance_w_sr_m2).get(), vmin=0,
+    plt.imshow(cp.transpose(max_radiance_w_sr_m2).get(), #vmin=0,
                extent=(edges[0][0].item(), edges[0][-1].item(),
                        edges[1][0].item(), edges[1][-1].item())) 
     plt.title(data._title, fontsize=14, fontweight="black")
@@ -98,7 +98,7 @@ def plot_histogram_4d(data: stats_cuda.Histogram):
 
 def plot_scatter(data):
     fig=plt.figure(figsize=[15,12])
-    plt.plot(data._x.get(), data._y.get(), ',')
+    plt.plot(data._x.get(), data._y.get(), ',', snap=False)
     plt.title(data._title, fontsize=14, fontweight="black")
     plt.xlabel(data._xlabel, fontsize=14)
     plt.ylabel(data._ylabel, fontsize=14)
@@ -109,14 +109,15 @@ def plot_all_histograms(stage):
     plot_histogram_data(stage._histogram_r_x)
     plot_histogram_data(stage._histogram_r_y)
     plot_histogram_data(stage._histogram_ez_phi)
-    plot_histogram_data(stage._histogram_ez_theta_unweighted)
-    plot_histogram_data(stage._histogram_ez_theta_weighted)
+#    plot_histogram_data(stage._histogram_ez_theta_unweighted)
+    plot_histogram_data(stage._histogram_ez_theta_intensity)
     plot_histogram_data(stage._histogram_ez_theta_radiance)
-    plot_polar_histogram(stage._histogram_ez_theta_unweighted)
-    plot_polar_histogram(stage._histogram_ez_theta_weighted)
+#    plot_polar_histogram(stage._histogram_ez_theta_unweighted)
+    plot_polar_histogram(stage._histogram_ez_theta_intensity)
     plot_polar_histogram(stage._histogram_ez_theta_radiance)
-    plot_histogram_4d(stage._histogram_4d_radiance)
     plot_histogram_4d(stage._histogram_4d_count)
+    plot_histogram_4d(stage._histogram_4d_intensity)
+    plot_histogram_4d(stage._histogram_4d_radiance)
     plot_scatter(stage._scatter)
 
 
