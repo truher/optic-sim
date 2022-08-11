@@ -347,6 +347,13 @@ def schlick_reflection_with_tir(ni: float, nt: float, cosX: cp.ndarray):
     """ni = incident side, nt = transmitted side.
     For rough surfaces, total internal reflection is much reduced,
     do don't use this one.
+    ... or maybe try to model the diffuse reflection correctly?  it looks
+    like this except there's a non-zero more-or-less constant transmission
+    beyond the critical angle?  maybe?  or maybe add up several of these with
+    different theta offsets?  (note the theta offset and projected area
+    go together, so adverse theta offsets are small, positive theta offsets are
+    large, so maybe just use a bigger theta offset which is basicaly the same
+    as a lower n.
     """
     r_0 = ((nt - ni)/(nt + ni)) ** 2
     if ni > nt:
@@ -358,7 +365,47 @@ def schlick_reflection_with_tir(ni: float, nt: float, cosX: cp.ndarray):
     return r
 
 
-class AcryliteDiffuser:
+class LambertianDiffuser:
+    N_AIR = 1.0
+    N_ACRYLIC = 1.495
+    # total guess; the logic is that rough surfaces act like the beam is closer
+    # to normal, so they transmit more, and the critical angle is larger.
+    N_ACRYLIC_ROUGH = 1.1
+
+    def __init__(self):
+        self._scattering = scattering.LambertianScattering()
+        self._absorption = 0.355
+        
+# TODO: refactoring
+    def diffuse(self, photons):
+###        photons.retain(1 - schlick_reflection(LambertianDiffuser.N_AIR,
+        photons.retain(1 - schlick_reflection_with_tir(LambertianDiffuser.N_AIR,
+###            LambertianDiffuser.N_ACRYLIC, photons.ez_z))
+            LambertianDiffuser.N_ACRYLIC_ROUGH, photons.ez_z))
+
+        size = np.int32(photons.size())  # TODO eliminate this
+        phi = scattering.get_scattering_phi(size)
+        theta = self._scattering.get_scattering_theta(size)
+        block_size = 1024  # max
+        grid_size = int(math.ceil(size / block_size))
+        scattering.scatter(
+            (grid_size,),
+            (block_size,),
+            (photons.ez_x, photons.ez_y, photons.ez_z, theta, phi, size),
+        )
+
+        photons.remove(self._absorption)
+
+        # remove photons reflected at the exit surface (acrylic -> air)
+###        photons.retain(1 - schlick_reflection(LambertianDiffuser.N_ACRYLIC,
+###        photons.retain(1 - schlick_reflection_with_tir(LambertianDiffuser.N_ACRYLIC,
+        photons.retain(1 - schlick_reflection_with_tir(LambertianDiffuser.N_ACRYLIC_ROUGH,
+            LambertianDiffuser.N_AIR, photons.ez_z))
+        # remove wrong-way photons. they might come out again but it's ok to ignore.
+        cp.logical_and(photons.alive, photons.ez_z > 0, out=photons.alive)
+
+
+class AcryliteDiffuser_0d010:
     """0D010 DF Acrylite Satinice 'optimum light diffusion' colorless.
 
        Transmission is 84% for a normal pencil beam; some is absorbed
@@ -368,6 +415,7 @@ class AcryliteDiffuser:
     """
     N_AIR = 1.0
     N_ACRYLIC = 1.495
+    N_ACRYLIC_ROUGH = 1.1
     def __init__(self):
         self._scattering = scattering.AcryliteScattering_0d010()
         # internal absorption, calibrated to 84% total transmission
@@ -383,8 +431,10 @@ class AcryliteDiffuser:
 
     def diffuse(self, photons):
         # remove photons reflected at the entry surface (air -> acrylic)
-        photons.retain(1 - schlick_reflection(AcryliteDiffuser.N_AIR,
-            AcryliteDiffuser.N_ACRYLIC, photons.ez_z))
+###        photons.retain(1 - schlick_reflection(AcryliteDiffuser.N_AIR,
+        photons.retain(1 - schlick_reflection_with_tir(AcryliteDiffuser_0d010.N_AIR,
+###            AcryliteDiffuser.N_ACRYLIC, photons.ez_z))
+            AcryliteDiffuser_0d010.N_ACRYLIC_ROUGH, photons.ez_z))
 
         # adjust the angles
         size = np.int32(photons.size())  # TODO eliminate this
@@ -402,8 +452,10 @@ class AcryliteDiffuser:
         photons.remove(self._absorption)
 
         # remove photons reflected at the exit surface (acrylic -> air)
-        photons.retain(1 - schlick_reflection(AcryliteDiffuser.N_ACRYLIC,
-            AcryliteDiffuser.N_AIR, photons.ez_z))
+###        photons.retain(1 - schlick_reflection(AcryliteDiffuser.N_ACRYLIC,
+        photons.retain(1 - schlick_reflection_with_tir(AcryliteDiffuser_0d010.N_ACRYLIC_ROUGH,
+            AcryliteDiffuser_0d010.N_AIR, photons.ez_z))
+        cp.logical_and(photons.alive, photons.ez_z > 0, out=photons.alive)
 
 class Diffuser:
     """Something that changes photon direction.

@@ -60,8 +60,8 @@ class Simulator:
         self.record_results(self._results._source_stage, photons)
 
         # propagate through the reflective light box
-###        #lightbox = optics_cuda.Lightbox(
-        lightbox = optics_cuda.SimplerLightbox(
+        lightbox = optics_cuda.Lightbox(
+#####        lightbox = optics_cuda.SimplerLightbox(
             height=self._results._box_stage._height_m,
             size=self._results._box_stage._size_m,
         )
@@ -69,8 +69,13 @@ class Simulator:
         self.record_results(self._results._box_stage, photons)
 
         # diffuse through the diffuser
+####
+# 
         #diffuser = optics_cuda.Diffuser(g=0.64, absorption=0.16)
-        diffuser = optics_cuda.AcryliteDiffuser()
+        diffuser = optics_cuda.AcryliteDiffuser_0d010()
+#####
+# lambertian works great, corresponds to white glass or wd008
+#        diffuser = optics_cuda.LambertianDiffuser()
         diffuser.diffuse(photons)
 # TODO: expose the angle distribution for a graph, i.e. make the
 # diffuser (and all the other operators) members of the simulator

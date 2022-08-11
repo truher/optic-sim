@@ -35,10 +35,10 @@ def get_scattering_theta(g: np.float32, size: np.int32) -> cp.ndarray:
 
 class LambertianScattering:
     def __init__(self):
-        pass
+        self._rng = cp.random.default_rng()
 
     def get_scattering_theta(self, size: int) -> cp.ndarray:
-        pass
+        return cp.arccos(2 * self._rng.random(size, dtype=np.float32) - 1.0) / 2
 
 class AcryliteScattering_0d010:
     """ Generate scattering angles that result in intensity distribution
@@ -71,6 +71,7 @@ class AcryliteScattering_0d010:
         intensity_distribution = ((gaussian_1 + gaussian_2) * (1-a_3) + a_3)
         sin_term = cp.sin(self.pdf_x_theta_rad)
         # TODO figure out the cos^5 schlick thing
+        # note the schlick term is relative to the surface not the ray.
         schlick_term = 1 - (1 - cp.cos(self.pdf_x_theta_rad)) ** 5
         
         self.angle_distribution = intensity_distribution * sin_term * schlick_term

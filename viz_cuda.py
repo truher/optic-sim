@@ -77,6 +77,7 @@ def plot_histogram_4d(data: stats_cuda.Histogram):
     # lets start with the corner.
     theta_x = (data._bin_edges[2][1:] + data._bin_edges[2][:-1]) / 2
     fig = plt.figure(figsize=[15, 12])
+    plt.suptitle(data._title, fontsize=14, fontweight="black")
 
     N = 3
     for xplot in range(N):
@@ -84,6 +85,8 @@ def plot_histogram_4d(data: stats_cuda.Histogram):
             xidx = int(math.floor((xplot * 2 + 1) * data._hist.shape[0]/(N*2)))
             yidx = int(math.floor((yplot * 2 + 1) * data._hist.shape[1]/(N*2)))
             theta_phi = data._hist[xidx, yidx, :, :]
+            # TODO: the "sum" here is wrong, need to divide by
+            # something like total sr?  i dunno.
             theta_sum_phi = cp.sum(theta_phi, axis=1)
             axes = plt.subplot(N, N, (yplot * N + xplot) + 1, projection='polar')
             axes.plot(
