@@ -36,17 +36,56 @@ class BaseSimulator:
         stats_cuda.histogram(photons, stage)
 
 
-class BackgroundSimulator(BaseSimulator):
-    """Simulate the path from background objects to the camera."""
+class LuminaireSimulator(BaseSimulator):
+    """Simulate a light fixture in the frame."""
 
     def run(self):
         source_wavelength_nm = 555
-        source_photons_per_bundle = 5e7
+        #source_photons_per_bundle = 5e7 # led
+        #source_photons_per_bundle = 5e4 # background
+        # aiming for 1.5 w/sr/m2 source radiance
+        source_photons_per_bundle = 3e5
         duration_s = 0.001
 
         source = optics_cuda.MonochromaticLambertianSource(
             self._results._source_stage._size_m,
+            #self._results._source_stage._size_m,
+            self._results._source_stage._height_m,
+            source_wavelength_nm,
+            source_photons_per_bundle,
+            duration_s,
+        )
+        photons = source.make_photons(self._bundles)
+        # point the source at the camera
+        photons.ez_z *= -1.0
+        #photons.debug(self._results._source_stage._size_m)
+        self.record_results(self._results._source_stage, photons)
+
+        optics_cuda.propagate_to_camera(
+            photons, location=self._results._camera_plane_stage._height_m
+        )
+        photons.prune_outliers(self._results._camera_plane_stage._size_m)
+        self.record_results(self._results._camera_plane_stage, photons)
+
+        # TODO: filter goes here
+
+        self._camera.count(photons)
+
+class BackgroundSimulator(BaseSimulator):
+    """Simulate the path from background objects to the camera."""
+
+    def run(self):
+        # TODO: obs this is wrong
+        source_wavelength_nm = 555
+        #source_photons_per_bundle = 5e7
+        # aiming for 0.07 w/sr/m2 source radiance
+        source_photons_per_bundle = 1.5e4
+        duration_s = 0.001
+
+        source = optics_cuda.MonochromaticLambertianSource(
             self._results._source_stage._size_m,
+            #self._results._source_stage._size_m,
+            self._results._source_stage._height_m,
             source_wavelength_nm,
             source_photons_per_bundle,
             duration_s,
@@ -94,7 +133,8 @@ class Simulator(BaseSimulator):
         source = optics_cuda.MonochromaticLambertianSource(
             ###        source = optics_cuda.FatPencil(
             self._results._source_stage._size_m,
-            self._results._source_stage._size_m,
+            #self._results._source_stage._size_m,
+            self._results._source_stage._height_m,
             source_wavelength_nm,
             source_photons_per_bundle,
             duration_s,

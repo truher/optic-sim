@@ -63,7 +63,7 @@ class BackgroundSimulationResult(BaseSimulationResult):
 
         self._source_stage = ResultStage("Background Source", reflector_size_m,
                                          reflector_distance_m)
-        self._source_stage._ray_length = 0.1
+        self._source_stage._ray_length = 0.01
 
         self._camera_plane_stage = ResultStage("Camera", 0.2, box_height_m)
         self._camera_plane_stage._box_color = 0x0000FF
