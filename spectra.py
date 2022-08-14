@@ -28,7 +28,7 @@ class Spectrum(Enum):
 
 
 class Emitter(Spectrum):
-    def emit(self, size):
+    def emit(self, size) -> pd.Series:
         given_x: pd.Series = self._interpolated_df.iloc[:, 0]
         given_pdf: pd.Series = self._interpolated_df.iloc[:, 1]
         return SourceSpectrum.generate_rand_from_pdf(given_pdf, given_x, size)

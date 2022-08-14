@@ -15,6 +15,7 @@ class ResultStage:
         self._photons_size = 0
         self._photons_energy_j = 0
         self._photons_power_w = 0
+        self._photons_spectrum = stats_cuda.Histogram()
         self._histogram_r_x = stats_cuda.Histogram()
         self._histogram_r_y = stats_cuda.Histogram()
         self._histogram_ez_phi = stats_cuda.Histogram()

@@ -1,7 +1,8 @@
 import cupy as cp  # type: ignore
 import numpy as np
-import stats_cuda
 import optics_cuda
+import spectra
+import stats_cuda
 import viz_cuda
 import util
 from tqdm.notebook import tqdm, trange
@@ -40,18 +41,19 @@ class LuminaireSimulator(BaseSimulator):
     """Simulate a light fixture in the frame."""
 
     def run(self):
-        source_wavelength_nm = 555
+        #source_wavelength_nm = 555
         #source_photons_per_bundle = 5e7 # led
         #source_photons_per_bundle = 5e4 # background
         # aiming for 1.5 w/sr/m2 source radiance
         source_photons_per_bundle = 3e5
         duration_s = 0.001
 
-        source = optics_cuda.MonochromaticLambertianSource(
+        source = optics_cuda.LambertianSource(
             self._results._source_stage._size_m,
             #self._results._source_stage._size_m,
             self._results._source_stage._height_m,
-            source_wavelength_nm,
+            #source_wavelength_nm,
+            spectra.SourceSpectrum.LED_COOL_WHITE,
             source_photons_per_bundle,
             duration_s,
         )
@@ -76,17 +78,18 @@ class BackgroundSimulator(BaseSimulator):
 
     def run(self):
         # TODO: obs this is wrong
-        source_wavelength_nm = 555
+        #source_wavelength_nm = 555
         #source_photons_per_bundle = 5e7
         # aiming for 0.07 w/sr/m2 source radiance
         source_photons_per_bundle = 1.5e4
         duration_s = 0.001
 
-        source = optics_cuda.MonochromaticLambertianSource(
+        source = optics_cuda.LambertianSource(
             self._results._source_stage._size_m,
             #self._results._source_stage._size_m,
             self._results._source_stage._height_m,
-            source_wavelength_nm,
+            #source_wavelength_nm,
+            spectra.SourceSpectrum.LED_COOL_WHITE,
             source_photons_per_bundle,
             duration_s,
         )
@@ -119,7 +122,7 @@ class Simulator(BaseSimulator):
         # make some photons
         # 555 nm is the peak lumens per watt.
         # TODO: make each photon in the bundle choose from a distribution
-        source_wavelength_nm = 555
+        #source_wavelength_nm = 555
 
         # used to calculate energy
         # TODO: calculate this number from the published output
@@ -130,12 +133,13 @@ class Simulator(BaseSimulator):
         # duration of the strobe, used to calculate power
         duration_s = 0.001
 
-        source = optics_cuda.MonochromaticLambertianSource(
+        source = optics_cuda.LambertianSource(
             ###        source = optics_cuda.FatPencil(
             self._results._source_stage._size_m,
             #self._results._source_stage._size_m,
             self._results._source_stage._height_m,
-            source_wavelength_nm,
+            #source_wavelength_nm,
+            spectra.SourceSpectrum.LED_FAR_RED,
             source_photons_per_bundle,
             duration_s,
         )

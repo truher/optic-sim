@@ -4,8 +4,9 @@ from cupyx import jit  # type: ignore
 import math
 import numpy as np
 import scipy.constants
-import stats_cuda
 import scattering
+import stats_cuda
+import spectra
 from abc import ABC, abstractmethod
 
 
@@ -162,9 +163,14 @@ class PencilSource(Source):
     """Zero area zero divergence."""
 
     def __init__(
-        self, wavelength_nm: int, photons_per_bundle: float, duration_s: float
+        self,
+        spectrum: spectra.Spectrum,
+        photons_per_bundle: float,
+        duration_s: float
     ):
-        self._wavelength_nm = wavelength_nm
+        #self._wavelength_nm = wavelength_nm
+        #self._spectrum = spectra.SourceSpectrum.LED_FAR_RED
+        self._spectrum = spectrum
         self._photons_per_bundle = photons_per_bundle
         self._duration_s = duration_s
 
@@ -177,7 +183,8 @@ class PencilSource(Source):
         photons.ez_y = cp.zeros(bundles, dtype=np.float32)
         photons.ez_z = cp.ones(bundles, dtype=np.float32)
         photons.alive = cp.ones(bundles, dtype=bool)
-        photons.wavelength_nm = cp.full(bundles, self._wavelength_nm, dtype=np.uint16)
+        #photons.wavelength_nm = cp.full(bundles, self._wavelength_nm, dtype=np.uint16)
+        photons.wavelength_nm = cp.array(self._spectrum.emit(bundles))
         photons.photons_per_bundle = self._photons_per_bundle
         photons.duration_s = self._duration_s
         return photons
@@ -190,15 +197,19 @@ class FatPencil(Source):
         self,
         width_m: float,
         height_m: float,
-        wavelength_nm: int,
+        #wavelength_nm: int,
+        spectrum: spectra.Spectrum,
         photons_per_bundle: float,
         duration_s: float,
     ):
         self._width_m = width_m
         self._height_m = height_m
-        self._wavelength_nm = wavelength_nm
+        #self._wavelength_nm = wavelength_nm
+        #self._spectrum = spectra.SourceSpectrum.LED_FAR_RED
+        self._spectrum = spectrum
         self._photons_per_bundle = photons_per_bundle
         self._duration_s = duration_s
+        self._spectrum = spectra.SourceSpectrum.LED_FAR_RED
 
     def make_photons(self, bundles: np.int32) -> Photons:
         photons = Photons()
@@ -215,24 +226,27 @@ class FatPencil(Source):
         photons.ez_z = cp.ones(bundles, dtype=np.float32)
 
         photons.alive = cp.ones(bundles, dtype=bool)
-        photons.wavelength_nm = cp.full(bundles, self._wavelength_nm, dtype=np.uint16)
+        #photons.wavelength_nm = cp.full(bundles, self._wavelength_nm, dtype=np.uint16)
+        photons.wavelength_nm = cp.array(self._spectrum.emit(bundles))
         photons.photons_per_bundle = self._photons_per_bundle
         photons.duration_s = self._duration_s
         return photons
 
 
-class MonochromaticLambertianSource(Source):
+class LambertianSource(Source):
     def __init__(
         self,
         width_m: float,
         height_m: float,
-        wavelength_nm: int,
+        #wavelength_nm: int,
+        spectrum: spectra.Spectrum,
         photons_per_bundle: float,
         duration_s: float,
     ):
         self._width_m = width_m
         self._height_m = height_m
-        self._wavelength_nm = wavelength_nm
+        #self._wavelength_nm = wavelength_nm
+        self._spectrum = spectrum
         self._photons_per_bundle = photons_per_bundle
         self._duration_s = duration_s
 
@@ -254,11 +268,12 @@ class MonochromaticLambertianSource(Source):
             ### avoid the singularity
             cp.arccos(cp.random.uniform(-0.98, 1, bundles, dtype=np.float32)) / 2
         )
-        MonochromaticLambertianSource.spherical_to_cartesian_raw(
+        LambertianSource.spherical_to_cartesian_raw(
             (128,), (1024,), (photons.ez_z, photons.ez_x, photons.ez_y, bundles)
         )
         photons.alive = cp.ones(bundles, dtype=bool)
-        photons.wavelength_nm = cp.full(bundles, self._wavelength_nm, dtype=np.uint16)
+        #photons.wavelength_nm = cp.full(bundles, self._wavelength_nm, dtype=np.uint16)
+        photons.wavelength_nm = cp.array(self._spectrum.emit(bundles))
         photons.photons_per_bundle = self._photons_per_bundle
         photons.duration_s = self._duration_s
         return photons

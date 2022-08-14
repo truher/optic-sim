@@ -8,13 +8,15 @@ import scattering
 
 class Histogram:
     def __init__(self):
-        self._hist = None
-        self._bin_edges = None
-        self._title = ""
-        self._xlabel = ""
-        self._ylabel = ""
+        self._hist: cp.ndarray = None # might be 1d or multi-d
+        self._bin_edges = None # might be cp.ndarray or List[cp.ndarray]
+        self._title: str = ""
+        self._xlabel: str = ""
+        self._ylabel: str = ""
 
     def add(self, hist):
+        if type(hist) != cp.ndarray:
+            raise ValueError("histogram must be cp.ndarray")
         if self._hist is None:
             self._hist = hist
         else:
@@ -24,13 +26,17 @@ class Histogram:
 # only useful for small runs since it remembers everything
 class Scatter:
     def __init__(self):
-        self._x = None
-        self._y = None
-        self._title = ""
-        self._xlabel = ""
-        self._ylabel = ""
+        self._x: cp.ndarray = None
+        self._y: cp.ndarray = None
+        self._title: str = ""
+        self._xlabel: str = ""
+        self._ylabel: str = ""
 
     def add(self, x, y):
+        if type(x) != cp.ndarray:
+            raise ValueError("x must be cp.ndarray")
+        if type(y) != cp.ndarray:
+            raise ValueError("y must be cp.ndarray")
         if self._x is None:
             self._x = x
         # for now just disable the infinite memory part
@@ -148,8 +154,8 @@ def histogram(photon_batch, stage):
         stage._histogram_ez_theta_count,
     )
 
-    bin_edges = np.linspace(theta_min, theta_max, bins + 1)
-    bin_area_sr = (np.cos(bin_edges[:-1]) - np.cos(bin_edges[1:])) * 2 * np.pi
+    bin_edges = cp.linspace(theta_min, theta_max, bins + 1)
+    bin_area_sr = (cp.cos(bin_edges[:-1]) - cp.cos(bin_edges[1:])) * 2 * np.pi
     one_histogram_theta(
         grid_size,
         block_size,
@@ -170,9 +176,9 @@ def histogram(photon_batch, stage):
     )
 
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    projected_area_m2 = (y_max - y_min) * (x_max - x_min) * np.abs(np.cos(bin_centers))
+    projected_area_m2 = (y_max - y_min) * (x_max - x_min) * cp.abs(cp.cos(bin_centers))
     bin_area_sr_m2 = (
-        (np.cos(bin_edges[:-1]) - np.cos(bin_edges[1:])) * 2 * np.pi * projected_area_m2
+        (cp.cos(bin_edges[:-1]) - cp.cos(bin_edges[1:])) * 2 * np.pi * projected_area_m2
     )
     one_histogram_theta(
         grid_size,
@@ -218,6 +224,15 @@ def histogram(photon_batch, stage):
         stage._histogram_4d_count,
     )
     scatterplot(photon_batch, "count theta vs x", "x", "theta", stage._scatter)
+    spectrum(photon_batch, stage._photons_spectrum)
+
+def spectrum(photon_batch, histogram_output):
+    counts, bins = cp.histogram(photon_batch.wavelength_nm, 256)
+    histogram_output._bin_edges = bins
+    histogram_output.add(counts)
+    histogram_output._title = "spectrum"
+    histogram_output._xlabel = "wavelength (nm)"
+    histogram_output._ylabel = "count"
 
 
 # TODO: this isn't very useful, get rid of it.
@@ -347,7 +362,7 @@ def histogram_4d(
     theta_bin_centers = (edges[2][:-1] + edges[2][1:]) / 2
     theta_bin_centers_stretched = theta_bin_centers[None, None, :, None]
 
-    projected_area_factor = np.abs(np.cos(theta_bin_centers_stretched))
+    projected_area_factor = cp.abs(cp.cos(theta_bin_centers_stretched))
     radiance_w_sr_m2 = intensity_w_sr / (bin_area_m2_stretched * projected_area_factor)
 
     radiance_histogram_output._bin_edges = edges
@@ -392,8 +407,8 @@ def one_histogram(
         ),
     )
 
-    histogram_output._bin_edges = np.linspace(dim_min, dim_max, bins + 1)
-    histogram_output.add(h.get() / (bin_area * duration_s))
+    histogram_output._bin_edges = cp.linspace(dim_min, dim_max, bins + 1)
+    histogram_output.add(h / (bin_area * duration_s))
     histogram_output._title = title
     histogram_output._xlabel = xlabel
     histogram_output._ylabel = ylabel
@@ -490,8 +505,8 @@ def one_histogram_phi(
         ),
     )
 
-    histogram_output._bin_edges = np.linspace(dim_min, dim_max, bins + 1)
-    histogram_output.add(h.get() / (bin_area * duration_s))
+    histogram_output._bin_edges = cp.linspace(dim_min, dim_max, bins + 1)
+    histogram_output.add(h / (bin_area * duration_s))
     histogram_output._title = title
     histogram_output._xlabel = xlabel
     histogram_output._ylabel = ylabel
@@ -564,7 +579,7 @@ def one_histogram_theta(
     title,
     xlabel,
     ylabel,
-    bin_area,
+    bin_area: cp.ndarray,
     duration_s,
     histogram_output,
 ):
@@ -584,8 +599,8 @@ def one_histogram_theta(
         ),
     )
 
-    histogram_output._bin_edges = np.linspace(dim_min, dim_max, bins + 1)
-    histogram_output.add(h.get() / (bin_area * duration_s))
+    histogram_output._bin_edges = cp.linspace(dim_min, dim_max, bins + 1)
+    histogram_output.add(h / (bin_area * duration_s))
     histogram_output._title = title
     histogram_output._xlabel = xlabel
     histogram_output._ylabel = ylabel

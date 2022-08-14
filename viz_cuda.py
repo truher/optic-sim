@@ -25,8 +25,8 @@ def plot_polar_histogram(data: stats_cuda.Histogram):
     fig = plt.figure(figsize=[7, 5])
     axes = plt.subplot(projection="polar")
     axes.plot(
-        (data._bin_edges[1:] + data._bin_edges[:-1]) / 2,
-        data._hist,
+        ((data._bin_edges[1:] + data._bin_edges[:-1]) / 2).get(),
+        data._hist.get(),
         color="blue",
         snap=False,
     )
@@ -39,7 +39,9 @@ def plot_polar_histogram(data: stats_cuda.Histogram):
 
 def plot_histogram_data(data: stats_cuda.Histogram):
     axes = plt.subplot()
-    axes.plot((data._bin_edges[1:] + data._bin_edges[:-1]) / 2, data._hist, snap=False)
+    axes.plot(
+        ((data._bin_edges[1:] + data._bin_edges[:-1]) / 2).get(),
+        data._hist.get(), snap=False)
     axes.set_title(data._title, fontsize=14, fontweight="black")
     axes.set_xlabel(data._xlabel, fontsize=14)
     axes.set_ylabel(data._ylabel, fontsize=14)
@@ -53,8 +55,8 @@ def plot_N_histograms(data):
     for p in range(N):
         axes = plt.subplot(1, N, p+1)
         plt.grid(True)
-        axes.plot((data[p]._bin_edges[1:] + data[p]._bin_edges[:-1]) / 2,
-                  data[p]._hist, snap=False)
+        axes.plot(((data[p]._bin_edges[1:] + data[p]._bin_edges[:-1]) / 2).get(),
+                  data[p]._hist.get(), snap=False)
         axes.set_title(data[p]._title, fontsize=14)
         axes.set_xlabel(data[p]._xlabel, fontsize=14)
         axes.set_ylabel(data[p]._ylabel, fontsize=14)
@@ -70,14 +72,16 @@ def plot_cartesian_and_polar_histograms(data: stats_cuda.Histogram):
     ax.yaxis.set_major_locator(ticker.LinearLocator(11))
     #ax.set_xlim(0,np.pi/2)
     plt.grid(True)
-    ax.plot((data._bin_edges[1:] + data._bin_edges[:-1]) / 2, data._hist, snap=False)
+    ax.plot(
+       ((data._bin_edges[1:] + data._bin_edges[:-1]) / 2).get(),
+       data._hist.get(), snap=False)
     ax.set_xlabel(data._xlabel, fontsize=14)
     ax.set_ylabel(data._ylabel, fontsize=14)
 
     ax = plt.subplot(122, projection='polar')
     ax.plot(
-        (data._bin_edges[1:] + data._bin_edges[:-1]) / 2,
-        data._hist,
+        ((data._bin_edges[1:] + data._bin_edges[:-1]) / 2).get(),
+        data._hist.get(),
         color="blue",
         snap=False,
     )
@@ -162,7 +166,7 @@ def plot_all_histograms(stage):
     plot_histogram_4d(stage._histogram_4d_intensity)
     plot_histogram_4d(stage._histogram_4d_radiance)
     plot_scatter(stage._scatter)
-
+    plot_histogram_data(stage._photons_spectrum)
 
 def _plot_stage_3d(plot, stage):
     scale = 1000
