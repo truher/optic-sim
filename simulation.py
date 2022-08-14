@@ -185,9 +185,13 @@ class Simulator(BaseSimulator):
             photons, location=self._results._camera_plane_stage._height_m
         )
         photons.prune_outliers(self._results._camera_plane_stage._size_m)
-        self.record_results(self._results._camera_plane_stage, photons)
 
-        # TODO: filter goes here
+
+        # apply color filter
+        flt = spectra.FilterSpectrum.FILTER_27
+        flt.absorb(photons.wavelength_nm, photons.alive)
+
+        self.record_results(self._results._camera_plane_stage, photons)
 
         self._camera.count(photons)
 

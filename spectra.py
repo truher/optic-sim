@@ -1,8 +1,8 @@
 from enum import Enum
+import cupy as cp
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy import interpolate
 
 
 class Spectrum(Enum):
@@ -13,95 +13,54 @@ class Spectrum(Enum):
             delimiter="\t",
             converters={1: lambda x: float(x.strip("%")) / 100},
         )
-        interpolated = interpolate.interp1d(
-            df.iloc[:, 0],
-            df.iloc[:, 1],
-            fill_value=(df.iloc[0, 1], df.iloc[-1, 1]),
-            bounds_error=False,
-        )
-        x_new = np.arange(360, 780, 0.1)
-        y_new = interpolated(x_new)
-        self._interpolated_df = pd.DataFrame({"nm": x_new, df.columns[1]: y_new})
+        self._x = cp.arange(360, 780, 0.1)
+        self._y = cp.interp(self._x, cp.array(df.iloc[:,0].to_numpy()), cp.array(df.iloc[:,1].to_numpy()))
 
     def pdf(self):
-        return (self._interpolated_df.iloc[:, 0], self._interpolated_df.iloc[:, 1])
+        return (self._x, self._y)
 
 
 class Emitter(Spectrum):
-    def emit(self, size) -> pd.Series:
-        given_x: pd.Series = self._interpolated_df.iloc[:, 0]
-        given_pdf: pd.Series = self._interpolated_df.iloc[:, 1]
-        return SourceSpectrum.generate_rand_from_pdf(given_pdf, given_x, size)
+    def emit(self, size) -> cp.array:
+        return cp.array(SourceSpectrum.generate_rand_from_pdf(self._y, self._x, size))
 
     @staticmethod
-    def generate_rand_from_pdf(pdf: pd.Series, x_grid: pd.Series, size) -> pd.Series:
+    def generate_rand_from_pdf(pdf: cp.ndarray, x_grid: cp.ndarray, size) -> pd.Series:
         cdf = pdf.cumsum()
-        cdf = cdf / cdf.iloc[-1]
-        values = np.random.rand(size)
-        value_bins = np.searchsorted(cdf, values)
+        cdf = cdf / cdf[-1]
+        values = cp.random.rand(size)
+        value_bins = cp.searchsorted(cdf, values)
         return x_grid[value_bins]
 
     def plot(self):
         (given_x, given_pdf) = self.pdf()
         scale_for_comparison = given_pdf.max()
-        plt.plot(given_x, given_pdf, "-")
+        plt.plot(given_x.get(), given_pdf.get(), "-")
         samples = self.emit(1000)
-        counts, bins = np.histogram(samples, 256)
-        plt.hist(bins[:-1], bins, weights=counts * scale_for_comparison / counts.max())
+        counts, bins = cp.histogram(samples, 256)
+        weights = counts.get() * scale_for_comparison.item() / counts.max().item()
+        plt.hist(bins[:-1].get(), bins.get(), weights = weights)
         plt.title(self._name)
         plt.xlabel("wavelength (nm)")
         plt.xlim(360, 780)
         plt.ylim(0, 1)
         plt.show()
 
-    def compare(self, flt):
-        """plot the filtered and unfiltered camera response to this source"""
-        # TODO: scale size to source brightness?
-        size = 10000
-        src_samples = self.emit(size)
-        src_alive = np.ones(size).astype(bool)
-        emit_count = np.sum(src_alive)
-
-        src_alive = np.ones(size).astype(bool)
-        src_filter = flt
-        src_filter.absorb(src_samples, src_alive)
-        CameraSpectrum.CAMERA_SEE_3_CAM.absorb(src_samples, src_alive)
-        qe_filter_count = np.sum(src_alive)
-
-        # fig = plt.figure(figsize=[15,10])
-        # show the filter shape
-        (given_x, given_pdf) = flt.pdf()
-        plt.plot(given_x, 200 * given_pdf, "-", color="red", label="transmission")
-        # before filtering
-        h, b = np.histogram(src_samples, bins=256)
-        plt.hist(b[:-1], b, weights=h, color="orange", label="source")
-        # after filtering
-        h, b = np.histogram(src_samples, bins=256, weights=1.0 * src_alive)
-        plt.hist(b[:-1], b, weights=h, color="blue", label="filtered")
-        plt.title(
-            f"{self._name} + {flt._name} = {100*qe_filter_count/emit_count:.2f}%",
-            fontsize=12,
-        )
-        plt.xlabel("wavelength (nm)")
-        plt.xlim(360, 780)
-        plt.legend()
-        plt.show()
-
 
 class Absorber(Spectrum):
     def __init__(self, name, file_name):
         super().__init__(name, file_name)
-        self._rng = np.random.default_rng()
+        self._rng = cp.random.default_rng()
 
-    def absorb(self, photon_wavelength, photon_alive):
-        filter_idx = self._interpolated_df.iloc[:, 0].searchsorted(photon_wavelength)
-        filter_value = self._interpolated_df.iloc[filter_idx, 1]
+    def absorb(self, photon_wavelength:cp.ndarray, photon_alive:cp.ndarray):
+        filter_idx = cp.searchsorted(self._x, photon_wavelength)
+        filter_value = self._y[filter_idx]
         fate = self._rng.random(photon_alive.size) < filter_value
-        np.logical_and(photon_alive, fate, out=photon_alive)
+        cp.logical_and(photon_alive, fate, out=photon_alive)
 
     def plot(self):
         (given_x, given_pdf) = self.pdf()
-        plt.plot(given_x, given_pdf, "-")
+        plt.plot(given_x.get(), given_pdf.get(), "-")
         plt.title(self._name)
         plt.xlabel("wavelength (nm)")
         plt.xlim(360, 780)
@@ -136,3 +95,48 @@ class CameraSpectrum(Absorber):
     """quantum efficiency of the camera"""
 
     CAMERA_SEE_3_CAM = ("Quantum Efficiency", "Spectra - QE.tsv")
+
+
+def compare_all():
+    size = 10000
+    scale = 200
+    for src in SourceSpectrum:
+        idx = 0
+        for flt in FilterSpectrum:
+            idx += 1
+            if idx > 3:
+                idx = 1
+            if idx == 1: # new row
+                fig = plt.figure(figsize=[30,5])
+            ax = plt.subplot(1, len(FilterSpectrum), idx)
+
+            """plot the filtered and unfiltered camera response to this source"""
+            # TODO: scale size to source brightness?
+            src_samples: cp.ndarray = src.emit(size)
+            src_alive: cp.ndarray = cp.ones(size).astype(bool)
+            emit_count = cp.sum(src_alive)
+
+            src_alive = cp.ones(size).astype(bool)
+            src_filter = flt
+            src_filter.absorb(src_samples, src_alive)
+            CameraSpectrum.CAMERA_SEE_3_CAM.absorb(src_samples, src_alive)
+            qe_filter_count = cp.sum(src_alive)
+
+            # show the filter shape
+            (given_x, given_pdf) = flt.pdf()
+            ax.plot(given_x.get(), scale * given_pdf.get(), "-", color="red", label="transmission")
+
+            # before filtering
+            h, b = cp.histogram(src_samples, bins=256)
+            ax.hist(b[:-1].get(), b.get(), weights=h.get(), color="orange", label="source")
+
+            # after filtering
+            h, b = cp.histogram(src_samples, bins=256, weights=1.0 * src_alive)
+            ax.hist(b[:-1].get(), b.get(), weights=h.get(), color="blue", label="filtered")
+            ax.set_title(
+                f"{src._name} + {flt._name} = {100*qe_filter_count/emit_count:.2f}%",
+            )
+            ax.set_xlabel("wavelength (nm)")
+            ax.set_xlim(360, 780)
+            ax.set_ylim(0, scale)
+        plt.show()
