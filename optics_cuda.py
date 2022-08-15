@@ -51,6 +51,12 @@ class Photons:
         cp.logical_and(inside, self.r_y <= ymax, out=inside)
         return cp.count_nonzero(inside) * self.photons_per_bundle
 
+    def prune_outliers2(self, xmin, xmax, ymin, ymax):
+        cp.logical_and(self.alive, self.r_x >= xmin, out=self.alive)
+        cp.logical_and(self.alive, self.r_x <= xmax, out=self.alive)
+        cp.logical_and(self.alive, self.r_y >= ymin, out=self.alive)
+        cp.logical_and(self.alive, self.r_y <= ymax, out=self.alive)
+
     def prune_outliers(self, size):
         """set out-of-bounds photons to dead"""
         cp.logical_and(self.alive, self.r_x >= -size / 2, out=self.alive)
@@ -84,7 +90,7 @@ class Photons:
         # choose extra to compensate for deadness
         # allow approximate return count
 
-        grid_size = int(math.ceil(16 / alive_ratio))
+        grid_size = int(math.ceil(16 / (alive_ratio + 0.000001)))
         selection_size = min(size, grid_size * block_size)
         scale = np.int32(size // selection_size)
 

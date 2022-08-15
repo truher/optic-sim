@@ -14,9 +14,10 @@ warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
 
 
 def summary(stage):
-    print(f"photon bundle count: {stage._photons_size}")
-    print(f"photon total energy (J): {stage._photons_energy_j:.5f}")
-    print(f"photon total power (W): {stage._photons_power_w:.5f}")
+    print(f"total photons: {(stage._photons_size * stage._photons_per_bundle):.2e}")
+    print(f"photon bundle count: {stage._photons_size:.2e}")
+    print(f"photon total energy (J): {stage._photons_energy_j:.2e}")
+    print(f"photon total power (W): {stage._photons_power_w:.2e}")
 
 
 def plot_polar_histogram(data: stats_cuda.Histogram):

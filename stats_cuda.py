@@ -227,7 +227,9 @@ def histogram(photon_batch, stage):
     spectrum(photon_batch, stage._photons_spectrum)
 
 def spectrum(photon_batch, histogram_output):
-    counts, bins = cp.histogram(photon_batch.wavelength_nm, 256)
+    counts, bins = cp.histogram(photon_batch.wavelength_nm,
+                                256, range=(360, 780),
+                                weights=photon_batch.alive)
     histogram_output._bin_edges = bins
     histogram_output.add(counts)
     histogram_output._title = "spectrum"

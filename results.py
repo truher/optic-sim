@@ -12,7 +12,8 @@ class ResultStage:
         self._label = label
         self._size_m = size_m
         self._height_m = height_m
-        self._photons_size = 0
+        self._photons_size = 0 # bundles
+        self._photons_per_bundle = 0
         self._photons_energy_j = 0
         self._photons_power_w = 0
         self._photons_spectrum = stats_cuda.Histogram()
@@ -79,6 +80,10 @@ class BackgroundSimulationResult(BaseSimulationResult):
             box_height_m,
         ]
 
+        # after filtering
+        self._filter_stage = ResultStage("Camera Lens", 0.2, box_height_m)
+        self._camera_lens_stage = ResultStage("Camera Lens", 0.2, box_height_m)
+
 class SimulationResult(BaseSimulationResult):
     """Additive metrics produced from N waves of simulation."""
 
@@ -133,4 +138,8 @@ class SimulationResult(BaseSimulationResult):
             0.0050,
             box_height_m,
         ]
+
+        # after filtering
+        self._filter_stage = ResultStage("Camera Lens", 0.2, box_height_m)
+        self._camera_lens_stage = ResultStage("Camera Lens", 0.2, box_height_m)
 

@@ -30,6 +30,8 @@ class BaseSimulator:
         display(Markdown("# Done"))
 
     def record_results(self, stage, photons):
+        # assume all bundles same?  instead add each bundle count to a total?
+        stage._photons_per_bundle = photons.photons_per_bundle
         stage._photons_size += photons.count_alive()
         stage._photons_energy_j += photons.energy_j()
         stage._photons_power_w += photons.power_w()
@@ -69,7 +71,20 @@ class LuminaireSimulator(BaseSimulator):
         photons.prune_outliers(self._results._camera_plane_stage._size_m)
         self.record_results(self._results._camera_plane_stage, photons)
 
-        # TODO: filter goes here
+        # apply color filter
+        flt = spectra.FilterSpectrum.FILTER_27
+        flt.absorb(photons.wavelength_nm, photons.alive)
+
+        self.record_results(self._results._filter_stage, photons)
+
+        # only look at what the camera will look at
+        # TODO: clean this up somehow
+        photons.prune_outliers2(
+            self._camera._xmin,
+            self._camera._xmax,
+            self._camera._ymin,
+            self._camera._ymax)
+        self.record_results(self._results._camera_lens_stage, photons)
 
         self._camera.count(photons)
 
@@ -105,7 +120,20 @@ class BackgroundSimulator(BaseSimulator):
         photons.prune_outliers(self._results._camera_plane_stage._size_m)
         self.record_results(self._results._camera_plane_stage, photons)
 
-        # TODO: filter goes here
+        # apply color filter
+        flt = spectra.FilterSpectrum.FILTER_27
+        flt.absorb(photons.wavelength_nm, photons.alive)
+
+        self.record_results(self._results._filter_stage, photons)
+
+        # only look at what the camera will look at
+        # TODO: clean this up somehow
+        photons.prune_outliers2(
+            self._camera._xmin,
+            self._camera._xmax,
+            self._camera._ymin,
+            self._camera._ymax)
+        self.record_results(self._results._camera_lens_stage, photons)
 
         self._camera.count(photons)
 
@@ -186,12 +214,22 @@ class Simulator(BaseSimulator):
         )
         photons.prune_outliers(self._results._camera_plane_stage._size_m)
 
+        self.record_results(self._results._camera_plane_stage, photons)
 
         # apply color filter
         flt = spectra.FilterSpectrum.FILTER_27
         flt.absorb(photons.wavelength_nm, photons.alive)
 
-        self.record_results(self._results._camera_plane_stage, photons)
+        self.record_results(self._results._filter_stage, photons)
+
+        # only look at what the camera will look at
+        # TODO: clean this up somehow
+        photons.prune_outliers2(
+            self._camera._xmin,
+            self._camera._xmax,
+            self._camera._ymin,
+            self._camera._ymax)
+        self.record_results(self._results._camera_lens_stage, photons)
 
         self._camera.count(photons)
 
