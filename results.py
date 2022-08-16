@@ -41,12 +41,12 @@ class ResultStage:
         # to magnify narrow distributions
         #####
         # self._theta_min = 0
-        self._theta_min = 0.01
+        self._theta_min = 0.00001
         #        self._theta_min = np.pi/16
         # self._theta_max = np.pi
         #self._theta_max = 0.99 * np.pi / 2
         # TODO: avoid the singularity at pi/2 somehow
-        self._theta_max = 0.99 * np.pi
+        self._theta_max = 0.99999 * np.pi
 
 
 #        self._theta_max = 15*np.pi/16
@@ -59,8 +59,13 @@ class BaseSimulationResult:
 
 class BackgroundSimulationResult(BaseSimulationResult):
     def __init__(self):
-        reflector_size_m = 0.1
-        reflector_distance_m = 10
+###
+        reflector_size_m = 0.2
+###
+#        reflector_distance_m = 10
+# FRC close-up 1m
+        reflector_distance_m = 1
+
         box_height_m = 0.04
 
         self._source_stage = ResultStage("Background Source", reflector_size_m,
@@ -91,9 +96,22 @@ class SimulationResult(BaseSimulationResult):
 
         source_size_m = 0.001 # the LED die, more or less
         # TODO: make reflector distance a parameter
+
+###
+        # this is for typical FRC field:
         # a reasonable min is 1m, max is 10m (actual max is 16m)
-        reflector_size_m = 0.1
-        reflector_distance_m = 10
+        #reflector_size_m = 0.1
+        #reflector_distance_m = 10
+
+        # this is for calibrating the reflector
+        # using ASTM E810 − 03
+        reflector_size_m = 0.2 # suggested by E810 as convenient
+###
+# ASTM 15m
+#        reflector_distance_m = 15 # specified exactly by E810
+# FRC close-up 1m
+        reflector_distance_m = 1
+
         box_size_m = 0.04
         box_height_m = 0.04
 
@@ -126,20 +144,60 @@ class SimulationResult(BaseSimulationResult):
         # photons arriving at the camera plane
         # camera height is the same as the diffuser
         # camera neighborhood is large so we can see the distribution
-        self._camera_plane_stage = ResultStage("Camera", 0.2, box_height_m)
+        camera_plane_size_m = 1.2
+        self._camera_plane_stage = ResultStage("Camera",
+            camera_plane_size_m,
+            box_height_m)
         self._camera_plane_stage._box_color = 0x0000FF
         self._camera_plane_stage._ray_color = 0x00FF00
         # note offset camera, 1 cm square
         # TODO: show both camera and diffuser
+
+###
+        # this is for the actual setup, it's about 0.1 degrees.
+#        self._camera_plane_stage._box = [
+#            0.02,
+#            0.03,
+#            -0.0050,
+#            0.0050,
+#            box_height_m,
+#        ]
+        # note the illuminator is not the correct size for the ASTM method
+        # but i don't think it matters.
+        # this is for ASTM E810 − 03, camera is 0.2 degrees from illuminator
         self._camera_plane_stage._box = [
             0.02,
             0.03,
-            -0.0050,
-            0.0050,
+            -0.005,
+            0.005,
             box_height_m,
         ]
+        # some more data points for curve fitting:
+        # on axis +/- 0.5 cm
+        # 0.1 degrees: 2-3 cm # this is the FRC setup
+        # 0.2 degrees: 4.5-5.5 cm
+        # 0.33 degrees: 8-9cm.
+        # 0.5 degrees: 12.5-13.5cm
+        # 1 degree: 25.5-26.5
+        # 2 degrees: 51.5-52.5
+        # 
+
 
         # after filtering
-        self._filter_stage = ResultStage("Camera Lens", 0.2, box_height_m)
+        self._filter_stage = ResultStage("Filter", 0.2, box_height_m)
+        self._filter_stage._box = [
+            0.02,
+            0.03,
+            -0.005,
+            0.005,
+            box_height_m,
+        ]
         self._camera_lens_stage = ResultStage("Camera Lens", 0.2, box_height_m)
+        self._camera_lens_stage._box = [
+            0.02,
+            0.03,
+            -0.005,
+            0.005,
+            box_height_m,
+        ]
 

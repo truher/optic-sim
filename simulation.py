@@ -21,7 +21,21 @@ class BaseSimulator:
         self._waves = waves
         self._bundles = bundles
         self._bundle_size = bundle_size  # TODO Actually use this?
+### for astm e810, move the camera around
+# on-axis
+        #self._camera = optics_cuda.Camera(-0.005, 0.005, -0.0050, 0.0050)
+# 0.1 degrees # this is the FRC setup
         self._camera = optics_cuda.Camera(0.02, 0.03, -0.0050, 0.0050)
+# 0.2 degrees
+        #self._camera = optics_cuda.Camera(0.045, 0.055, -0.0050, 0.0050)
+# 0.33 degrees
+        #self._camera = optics_cuda.Camera(0.08, 0.09, -0.0050, 0.0050)
+# 0.5 degrees
+        #self._camera = optics_cuda.Camera(0.125, 0.135, -0.0050, 0.0050)
+# 1 degree
+        #self._camera = optics_cuda.Camera(0.255, 0.265, -0.0050, 0.0050)
+# 2 degrees
+        #self._camera = optics_cuda.Camera(0.515, 0.525, -0.0050, 0.0050)
 
     def run_all_waves(self):
         # for i in range(self._waves):
@@ -95,8 +109,12 @@ class BackgroundSimulator(BaseSimulator):
         # TODO: obs this is wrong
         #source_wavelength_nm = 555
         #source_photons_per_bundle = 5e7
+        # background radiance
         # aiming for 0.07 w/sr/m2 source radiance
-        source_photons_per_bundle = 1.5e4
+###
+#        source_photons_per_bundle = 1.5e4
+        # this is for 0.04 source, which the ASTM thing uses so keep it
+        source_photons_per_bundle = 3.0e4
         duration_s = 0.001
 
         source = optics_cuda.LambertianSource(
@@ -156,7 +174,10 @@ class Simulator(BaseSimulator):
         # TODO: calculate this number from the published output
         # waves: 100; photons per bundle: 1e7
         # waves:  20; photons per bundle: 5e7
-        source_photons_per_bundle = 5e7
+###
+# for astm e810 for far-away camera, need more resolution
+#        source_photons_per_bundle = 5e7
+        source_photons_per_bundle = 2.5e7
 
         # duration of the strobe, used to calculate power
         duration_s = 0.001
@@ -204,7 +225,11 @@ class Simulator(BaseSimulator):
         self.record_results(self._results._outbound_stage, photons)
 
         # reflect TODO: guess at absorption
-        reflector = optics_cuda.HenyeyGreensteinDiffuser(g=-0.9925, absorption=0.0)
+###
+# for ASTM E810, try a bit sharper distribution
+#        reflector = optics_cuda.HenyeyGreensteinDiffuser(g=-0.9925, absorption=0.0)
+# lots of absorption to make R_A=500 at 0.2deg
+        reflector = optics_cuda.HenyeyGreensteinDiffuser(g=-0.995, absorption=0.84)
         reflector.diffuse(photons)
         self.record_results(self._results._inbound_stage, photons)
 
@@ -217,6 +242,8 @@ class Simulator(BaseSimulator):
         self.record_results(self._results._camera_plane_stage, photons)
 
         # apply color filter
+###
+# skip absorption for ASTM E810 for now
         flt = spectra.FilterSpectrum.FILTER_27
         flt.absorb(photons.wavelength_nm, photons.alive)
 

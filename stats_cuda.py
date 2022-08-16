@@ -253,7 +253,7 @@ def counter(
         points,
         bins=(27, 27, 27, 18),
         # bins=(18,18,16,32),
-        range=((x_min, x_max), (y_min, y_max), (0, np.pi), (-np.pi, np.pi)),
+        range=((x_min, x_max), (y_min, y_max), (0.00001, 0.99999*np.pi), (-np.pi, np.pi)),
         weights=photons.alive,
     )
 
@@ -333,7 +333,7 @@ def histogram_4d(
             (x_min, x_max),
             (y_min, y_max),
             ###(0.01, 0.99 * np.pi / 2),
-            (0.01, 0.99 * np.pi),
+            (0.00001, 0.99999 * np.pi),
             (-np.pi, np.pi),
         ),
         weights=photons.alive * energy_per_bundle_j,

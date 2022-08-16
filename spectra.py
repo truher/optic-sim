@@ -92,9 +92,8 @@ class FilterSpectrum(Absorber):
 
 
 class CameraSpectrum(Absorber):
-    """quantum efficiency of the camera"""
-
     CAMERA_SEE_3_CAM = ("Quantum Efficiency", "Spectra - QE.tsv")
+    PHOTOPIC = ("Photopic Response", 'Spectra - Photopic.tsv')
 
 
 def compare_all():
