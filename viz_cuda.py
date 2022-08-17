@@ -123,7 +123,8 @@ def plot_histogram_4d(data: stats_cuda.Histogram):
     plt.suptitle(data._title, fontsize=14, fontweight="black")
 
     N = 3
-    y_max = cp.max(cp.sum(data._hist, axis=3)).item()
+###    y_max = cp.max(cp.sum(data._hist, axis=3)).item()
+    y_max = cp.amax(data._hist).item()
     for xplot in range(N):
         for yplot in range(N):
             xidx = int(math.floor((xplot * 2 + 1) * data._hist.shape[0] / (N * 2)))
@@ -131,7 +132,9 @@ def plot_histogram_4d(data: stats_cuda.Histogram):
             theta_phi = data._hist[xidx, yidx, :, :]
             # TODO: the "sum" here is wrong, need to divide by
             # something like total sr?  i dunno.
-            theta_sum_phi = cp.sum(theta_phi, axis=1)
+### try "max' instead of 'sum'
+###            theta_sum_phi = cp.sum(theta_phi, axis=1)
+            theta_sum_phi = cp.amax(theta_phi, axis=1)
             axes = plt.subplot(N, N, (yplot * N + xplot) + 1, projection="polar")
             axes.plot(
                 theta_x.get(),

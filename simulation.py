@@ -185,10 +185,10 @@ class Simulator(BaseSimulator):
 #        source_photons_per_bundle = 5e7
 # 3e6 works for one led, produces about 700mW which is the 1 amp number
         #source_photons_per_bundle = 3e6
-# going for 8.4w output, which is the absolute max of 6 (3x overdrive <10% duty cycle)
-        source_photons_per_bundle = 4e7
-# going for 17w output is 12 emitters per eye (!) at 3x overdrive 10% duty cycle.
-        source_photons_per_bundle = 8e7
+# far red 8.4w output, which is the absolute max of 6 (3x overdrive <10% duty cycle)
+###        source_photons_per_bundle = 4e7
+# try photo red 10.6w total for 6 per eye
+        source_photons_per_bundle = 4.3e7
 
 
         # duration of the strobe, used to calculate power
@@ -200,7 +200,10 @@ class Simulator(BaseSimulator):
             #self._results._source_stage._size_m,
             self._results._source_stage._height_m,
             #source_wavelength_nm,
-            spectra.SourceSpectrum.LED_FAR_RED,
+# far red is 350mw at 350mA
+###            spectra.SourceSpectrum.LED_FAR_RED,
+# photo  red is 425mw at 350mA
+            spectra.SourceSpectrum.LED_PHOTO_RED,
             source_photons_per_bundle,
             duration_s,
         )
