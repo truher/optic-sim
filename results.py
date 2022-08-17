@@ -16,6 +16,7 @@ class ResultStage:
         self._photons_per_bundle = 0
         self._photons_energy_j = 0
         self._photons_power_w = 0
+        self._luminous_flux_lm = 0
         self._photons_spectrum = stats_cuda.Histogram()
         self._histogram_r_x = stats_cuda.Histogram()
         self._histogram_r_y = stats_cuda.Histogram()
@@ -56,6 +57,46 @@ class ResultStage:
 
 class BaseSimulationResult:
     pass
+
+
+class LuminaireSimulationResult(BaseSimulationResult):
+    def __init__(self):
+###
+# BIG. otherwise just like background
+        #reflector_size_m = 0.5 (so area is 0.25)
+# this needs to be THE SAME as the other sims for the radiance to work out
+# so area is 0.04, so instead of 4000lm, 640lm.
+        reflector_size_m = 0.2 # suggested by E810 as convenient
+
+###
+#        reflector_distance_m = 10
+# FRC close-up 1m
+# luminaires are far away, say 10m
+        reflector_distance_m = 10
+
+        box_height_m = 0.04
+
+        self._source_stage = ResultStage("Background Source", reflector_size_m,
+                                         reflector_distance_m)
+        self._source_stage._ray_length = 0.01
+
+        self._camera_plane_stage = ResultStage("Camera", 0.2, box_height_m)
+        self._camera_plane_stage._box_color = 0x0000FF
+        self._camera_plane_stage._ray_color = 0x00FF00
+        # note offset camera, 1 cm square
+        # TODO: show both camera and diffuser
+        self._camera_plane_stage._box = [
+            0.02,
+            0.03,
+            -0.0050,
+            0.0050,
+            box_height_m,
+        ]
+
+        # after filtering
+        self._filter_stage = ResultStage("Camera Lens", 0.2, box_height_m)
+        self._camera_lens_stage = ResultStage("Camera Lens", 0.2, box_height_m)
+
 
 class BackgroundSimulationResult(BaseSimulationResult):
     def __init__(self):
@@ -110,7 +151,9 @@ class SimulationResult(BaseSimulationResult):
 # ASTM 15m
 #        reflector_distance_m = 15 # specified exactly by E810
 # FRC close-up 1m
-        reflector_distance_m = 1
+        #reflector_distance_m = 1
+# FRC far away 10m
+        reflector_distance_m = 10
 
         box_size_m = 0.04
         box_height_m = 0.04

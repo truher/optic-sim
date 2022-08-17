@@ -139,6 +139,12 @@ class Photons:
     def power_w(self) -> float:
         return self.energy_j() / self.duration_s
 
+    def luminous_flux_lm(self) -> float:
+        lumen_seconds = spectra.Photopic.PHOTOPIC.lumen_seconds(
+            self.wavelength_nm, self.photons_per_bundle, self.alive)
+        lumens = lumen_seconds / self.duration_s
+        return lumens
+
 
 class PhotonsStacked:
     def __init__(self):
@@ -556,17 +562,20 @@ class ColorFilter:
         pass
 
 class Camera:
-    """Counts photons.  For now assume they're at the right z.
+    """Counts photons, weighted by quantum efficiency, i.e. counts electrons.
+    For now assume the input is at the right z.
     """
     def __init__(self, xmin, xmax, ymin, ymax):
         self._xmin = xmin
         self._xmax = xmax
         self._ymin = ymin
         self._ymax = ymax
-        self._total_photons  = 0
+        self._total_electrons = 0
 
     def count(self, photons: Photons):
-        self._total_photons  += photons.count_photons_inside(self._xmin,
+        # first "filter" the input to convert it into electrons
+        spectra.CameraSpectrum.CAMERA_SEE_3_CAM.absorb(photons.wavelength_nm, photons.alive)
+        self._total_electrons  += photons.count_photons_inside(self._xmin,
             self._xmax,self._ymin,self._ymax)
 
 #does this write to a result somehow?

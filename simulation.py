@@ -49,6 +49,7 @@ class BaseSimulator:
         stage._photons_size += photons.count_alive()
         stage._photons_energy_j += photons.energy_j()
         stage._photons_power_w += photons.power_w()
+        stage._luminous_flux_lm += photons.luminous_flux_lm()
         stage._sample.add(photons.sample())
         stats_cuda.histogram(photons, stage)
 
@@ -61,7 +62,11 @@ class LuminaireSimulator(BaseSimulator):
         #source_photons_per_bundle = 5e7 # led
         #source_photons_per_bundle = 5e4 # background
         # aiming for 1.5 w/sr/m2 source radiance
-        source_photons_per_bundle = 3e5
+# luminaires produce 4k lm each
+# ok we're guessing that a 4k luminaire has a 0.25m^2 area
+# but we want a 0.04 m^2 area to make the math easier
+# so divide by about 6
+        source_photons_per_bundle = 7e6
         duration_s = 0.001
 
         source = optics_cuda.LambertianSource(
@@ -114,7 +119,8 @@ class BackgroundSimulator(BaseSimulator):
 ###
 #        source_photons_per_bundle = 1.5e4
         # this is for 0.04 source, which the ASTM thing uses so keep it
-        source_photons_per_bundle = 3.0e4
+        #source_photons_per_bundle = 3.0e4
+        source_photons_per_bundle = 8.3e4
         duration_s = 0.001
 
         source = optics_cuda.LambertianSource(
@@ -177,7 +183,13 @@ class Simulator(BaseSimulator):
 ###
 # for astm e810 for far-away camera, need more resolution
 #        source_photons_per_bundle = 5e7
-        source_photons_per_bundle = 2.5e7
+# 3e6 works for one led, produces about 700mW which is the 1 amp number
+        #source_photons_per_bundle = 3e6
+# going for 8.4w output, which is the absolute max of 6 (3x overdrive <10% duty cycle)
+        source_photons_per_bundle = 4e7
+# going for 17w output is 12 emitters per eye (!) at 3x overdrive 10% duty cycle.
+        source_photons_per_bundle = 8e7
+
 
         # duration of the strobe, used to calculate power
         duration_s = 0.001

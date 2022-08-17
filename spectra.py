@@ -103,7 +103,8 @@ class LuminousEfficiency(Absorber):
     def lumen_seconds(self, photon_wavelength_nm, photons_per_bundle, photon_alive):
         # actually per bundle
         idx = cp.searchsorted(self._x, photon_wavelength_nm)
-        return cp.sum(self._lumen_seconds_per_photon_per_nm[idx]) * photons_per_bundle
+        lumen_seconds_per_nm = self._lumen_seconds_per_photon_per_nm[idx] * photon_alive
+        return cp.sum(lumen_seconds_per_nm) * photons_per_bundle
 
 
 class SourceSpectrum(Emitter):

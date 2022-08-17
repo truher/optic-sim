@@ -18,6 +18,7 @@ def summary(stage):
     print(f"photon bundle count: {stage._photons_size:.2e}")
     print(f"photon total energy (J): {stage._photons_energy_j:.2e}")
     print(f"photon total power (W): {stage._photons_power_w:.2e}")
+    print(f"luminous flux (lm): {stage._luminous_flux_lm:.2e}")
 
 
 def plot_polar_histogram(data: stats_cuda.Histogram):
